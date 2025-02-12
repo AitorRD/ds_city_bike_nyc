@@ -1,0 +1,82 @@
+---
+title: "Proyecto Data Science - City Bike Dataset"
+author: 
+  - "Costela Guijosa, Jose Luis"
+  - "Reyes López, Marta"
+  - "Rodríguez Dueñas, Aitor"
+  - "Sánchez Jiménez, Manuel"
+date: "Febrero de 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#if (!require("libreria")) install.packages("libreria")
+
+#library(libreria)
+```
+
+
+## Introducción
+
+Explicar un poco el objetivo del trabajo y demás. Siguiendo la rúbrica:
+- ¿De qué va el trabajo?
+- ¿Por qué es interesante?
+- ¿Volumen de negocio del dominio?
+- ¿Importancia local/nacional y en el contexto actual
+
+## Descripción del dataset
+
+Explicar el dataset. Siguiendo la rúbrica:
+- Indicar el tamaño en KB/MB/GB del dataset
+- Indicar el número de filas y columnas
+- Indicar origen del dataset
+
+## Importación, limpieza y tratamiento
+
+Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset,
+o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la
+fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la
+fuente y quien realizó el tratamiento.
+
+```{r importacion_limpieza_tratamiento}
+
+df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
+
+```
+
+## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
+
+Explicar las preguntas en este apartado y que queremos resolver.
+
+Siguiendo rúbrica:
+- ¿Es una pregunta que se me hubiera planteado al conocer el dominio?
+- ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos?
+- ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+
+## Resolución de preguntas
+
+Resolvemos aquí las preguntas etc etc.
+
+Siguiendo rúbrica:
+- La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el
+uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de
+los datos.
+
+Siguiendo rúbrica para visualización:
+- ¿Ha mostrado alguna visualización? ¿Cuántas?
+- ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones?
+- ¿Les falta algún tipo de información contextual importante para entender el gráfico?
+- ¿Es el gráfico más adecuado para lo que quieren representar?
+
+## Conclusiones
+
+Indicar resultados y conclusiones a las preguntas.
+
+Siguiendo rúbrica:
+- ¿Han respondido a las cuestiones planteadas?
+- ¿Es coherente la conclusión con el resto del proceso?
+- ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+
+
