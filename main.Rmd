@@ -12,37 +12,46 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-#if (!require("libreria")) install.packages("libreria")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("geosphere")) install.packages("geosphere")
 
-#library(libreria)
+library(dplyr)
+library(geosphere)
 ```
-
 
 ## Introducción
 
-Explicar un poco el objetivo del trabajo y demás. Siguiendo la rúbrica:
-- ¿De qué va el trabajo?
-- ¿Por qué es interesante?
-- ¿Volumen de negocio del dominio?
-- ¿Importancia local/nacional y en el contexto actual
+Explicar un poco el objetivo del trabajo y demás. Siguiendo la rúbrica: - ¿De qué va el trabajo? - ¿Por qué es interesante? - ¿Volumen de negocio del dominio? - ¿Importancia local/nacional y en el contexto actual
 
 ## Descripción del dataset
 
-Explicar el dataset. Siguiendo la rúbrica:
-- Indicar el tamaño en KB/MB/GB del dataset
-- Indicar el número de filas y columnas
-- Indicar origen del dataset
+Explicar el dataset. Siguiendo la rúbrica: - Indicar el tamaño en KB/MB/GB del dataset - Indicar el número de filas y columnas - Indicar origen del dataset
 
 ## Importación, limpieza y tratamiento
 
-Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset,
-o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la
-fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la
-fuente y quien realizó el tratamiento.
+Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.
+
+# TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+# TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
+
 
 ```{r importacion_limpieza_tratamiento}
 
 df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
+
+df %>% summarise_all(~ sum(is.na(.)))
+
+df <- df %>% select(-c(X, birth.year, year))
+df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
+df <- df %>% mutate(tripduration = tripduration / 60)
+
+df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
+                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+
+
+df <- df %>% mutate(speed = (distance_km / tripduration)*60)
+
+
 
 ```
 
@@ -50,33 +59,18 @@ df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
 
 Explicar las preguntas en este apartado y que queremos resolver.
 
-Siguiendo rúbrica:
-- ¿Es una pregunta que se me hubiera planteado al conocer el dominio?
-- ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos?
-- ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
 
 ## Resolución de preguntas
 
 Resolvemos aquí las preguntas etc etc.
 
-Siguiendo rúbrica:
-- La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el
-uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de
-los datos.
+Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
 
-Siguiendo rúbrica para visualización:
-- ¿Ha mostrado alguna visualización? ¿Cuántas?
-- ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones?
-- ¿Les falta algún tipo de información contextual importante para entender el gráfico?
-- ¿Es el gráfico más adecuado para lo que quieren representar?
+Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
 
 ## Conclusiones
 
 Indicar resultados y conclusiones a las preguntas.
 
-Siguiendo rúbrica:
-- ¿Han respondido a las cuestiones planteadas?
-- ¿Es coherente la conclusión con el resto del proceso?
-- ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
-
-
+Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
