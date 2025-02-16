@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+.data/bike_data.csv
+.data/combined/

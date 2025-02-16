@@ -13,9 +13,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 if (!require("dplyr")) install.packages("dplyr")
+if (!require("readr")) install.packages("readr")
 if (!require("geosphere")) install.packages("geosphere")
 
 library(dplyr)
+library(readr)
 library(geosphere)
 ```
 
@@ -30,7 +32,24 @@ Explicar el dataset. Siguiendo la rúbrica: - Indicar el tamaño en KB/MB/GB del
 ## Importación, limpieza y tratamiento
 
 Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.
+```{r compilación y obtención del dataset base}
+archivos_csv <- list.files(path = "data/combined", pattern = "(?i)\\.csv$", full.names = TRUE)
+nombres_columnas <- c("tripduration", "starttime", "stoptime", "start.station.id",
+                      "start.station.name", "start.station.latitude", "start.station.longitude",
+                      "end.station.id", "end.station.name", "end.station.latitude", 
+                      "end.station.longitude", "bikeid", "usertype", "birth.year", "gender")
 
+df_combinado <- archivos_csv %>%
+  lapply(function(archivo) {
+    cat("Procesando:", archivo, "\n")
+    df_col <- read_csv(archivo, show_col_types = FALSE)
+    colnames(df_col) <- nombres_columnas
+    return(df_col)
+  }) %>%
+  bind_rows()
+
+write_csv(df_combinado, "data/bike_data.csv")
+```
 # TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
 # TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
@@ -41,7 +60,7 @@ df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
 
 df %>% summarise_all(~ sum(is.na(.)))
 
-df <- df %>% select(-c(X, birth.year, year))
+df <- df %>% select(-c(birth.year))
 df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
 df <- df %>% mutate(tripduration = tripduration / 60)
 
