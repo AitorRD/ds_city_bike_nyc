@@ -6,39 +6,34 @@ runtime: shiny
 
 # Cargar librerías y datos
 ```{r setup, include=FALSE}
+if (!require("readr")) install.packages("readr")
+if (!require("geosphere")) install.packages("geosphere")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("leaflet")) install.packages("leaflet")
+
 library(dplyr)
 library(leaflet)
 library(shiny)
-
-df <- read.csv("data/bike_data.csv")
-```
-
-# Calcular rutas más populares
-```{r}
-rutas_populares <- df %>%
-  group_by(start.station.id, start.station.latitude, start.station.longitude, 
-           end.station.id, end.station.latitude, end.station.longitude) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  arrange(desc(count))
+library(readr)
+library(shinyWidgets)
+head(df)
 ```
 
 # UI: Interfaz de usuario con filtros
 ```{r}
 ui <- fluidPage(
-  titlePanel("Mapa Interactivo de Rutas de City Bike"),
+  titlePanel("Mapa de Rutas de Bicicletas"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("genero", "Seleccionar Género:", 
-                  choices = c("Todos", unique(df$gender)), selected = "Todos"),
-      selectInput("usertype", "Tipo de Usuario:", 
-                  choices = c("Todos", unique(df$usertype)), selected = "Todos"),
-      sliderInput("edad", "Rango de Edad:", 
-                  min = min(df$age, na.rm = TRUE), 
-                  max = max(df$age, na.rm = TRUE), 
-                  value = c(min(df$age, na.rm = TRUE), max(df$age, na.rm = TRUE)))
+      pickerInput("year", "Seleccionar Año:", choices = unique(substr(df$starttime, 1, 4)), multiple = TRUE, selected = unique(substr(df$starttime, 1, 4))),
+      sliderInput("num_rutas", "Número de rutas a mostrar:", min = 1, max = 100, value = 50),
+      selectInput("gender", "Género:", choices = c("Todos" = "all", "Masculino" = 1, "Femenino" = 2), selected = "all"),
+      selectInput("usertype", "Tipo de usuario:", choices = c("Todos" = "all", "Subscriber" = "Subscriber", "Customer" = "Customer"), selected = "all"),
+      sliderInput("age_range", "Rango de edad:", min = 18, max = 80, value = c(18, 80))
     ),
+    
     mainPanel(
-      leafletOutput("mapa_bikes", height = "600px")
+      leafletOutput("map")
     )
   )
 )
@@ -46,68 +41,42 @@ ui <- fluidPage(
 
 # Servidor con lógica de filtrado y visualización
 ```{r}
-server <- function(input, output) {
-  output$mapa_bikes <- renderLeaflet({
-    datos_filtrados <- df
+server <- function(input, output, session) {
+  
+  filtered_data <- reactive({
+    df %>%
+      filter(substr(starttime, 1, 4) %in% input$year) %>%
+      filter(if (input$gender != "all") gender == as.numeric(input$gender) else TRUE) %>%
+      filter(if (input$usertype != "all") usertype == input$usertype else TRUE)
+  })
+  
+  output$map <- renderLeaflet({
+    data <- filtered_data()
     
-    # Aplicar filtros demográficos
-    if (input$genero != "Todos") {
-      datos_filtrados <- datos_filtrados %>% filter(gender == input$genero)
-    }
-    if (input$usertype != "Todos") {
-      datos_filtrados <- datos_filtrados %>% filter(usertype == input$usertype)
-    }
-    datos_filtrados <- datos_filtrados %>% 
-      filter(age >= input$edad[1], age <= input$edad[2])
-
-    # Filtrar rutas populares
-    rutas_filtradas <- rutas_populares %>%
-      filter(start.station.id %in% datos_filtrados$start.station.id & 
-             end.station.id %in% datos_filtrados$end.station.id)
+    # Contar las rutas más frecuentes
+    rutas_freq <- data %>%
+      group_by(start.station.id, end.station.id) %>%
+      summarise(frecuencia = n()) %>%
+      arrange(desc(frecuencia)) %>%
+      head(input$num_rutas)
     
-    # Verificar tipos de datos y eliminar NAs
-    rutas_filtradas <- rutas_filtradas %>%
-      mutate(
-        start.station.longitude = as.numeric(start.station.longitude),
-        end.station.longitude = as.numeric(end.station.longitude),
-        start.station.latitude = as.numeric(start.station.latitude),
-        end.station.latitude = as.numeric(end.station.latitude),
-        count = as.numeric(count)
+    # Crear el mapa
+    leaflet(data) %>%
+      addTiles() %>%
+      
+      # Agregar estaciones en azul con ícono de bicicleta
+      addAwesomeMarkers(
+        lng = data$start.station.longitude, lat = data$start.station.latitude,
+        icon = awesomeIcons(icon = "bicycle", markerColor = "blue"),
+        popup = ~start.station.name
       ) %>%
-      filter(!is.na(start.station.longitude) & !is.na(end.station.longitude) &
-             !is.na(start.station.latitude) & !is.na(end.station.latitude))
-    
-    # Mapa base
-    mapa <- leaflet() %>%
-      addTiles()
-
-    # Agregar estaciones de salida (verdes)
-    mapa <- mapa %>%
-      addCircleMarkers(lng = datos_filtrados$start.station.longitude,
-                       lat = datos_filtrados$start.station.latitude,
-                       color = "green", radius = 5, 
-                       label = datos_filtrados$start.station.name)
-
-    # Agregar estaciones de llegada (azules)
-    mapa <- mapa %>%
-      addCircleMarkers(lng = datos_filtrados$end.station.longitude,
-                       lat = datos_filtrados$end.station.latitude,
-                       color = "blue", radius = 5, 
-                       label = datos_filtrados$end.station.name)
-
-    # Agregar rutas populares
-    if (nrow(rutas_filtradas) > 0) {
-      for (i in 1:nrow(rutas_filtradas)) {
-        mapa <- mapa %>%
-          addPolylines(
-            lng = c(rutas_filtradas$start.station.longitude[i], rutas_filtradas$end.station.longitude[i]),
-            lat = c(rutas_filtradas$start.station.latitude[i], rutas_filtradas$end.station.latitude[i]),
-            color = "red", weight = 3 + rutas_filtradas$count[i] / 50, opacity = 0.7
-          )
-      }
-    }
-    
-    return(mapa)
+      
+      # Agregar rutas en rojo
+      addPolylines(
+        lng = ~c(start.station.longitude, end.station.longitude),
+        lat = ~c(start.station.latitude, end.station.latitude),
+        color = "red", weight = 2, opacity = 0.8
+      )
   })
 }
 ```
