@@ -1,0 +1,82 @@
+---
+title: "Proyecto Data Science - Pregunta Individiual 1"
+author: "Rodríguez Dueñas, Aitor"
+date: "Febrero de 2025"
+output: html_document
+---
+
+# Pregunta : ¿El tipo de usuario afecta la necesidad de mantenimiento de las bicicletas?
+
+## Hipótesis:
+
+-   Hipótesis nula (H0): No hay diferencia en el desgaste de bicicletas entre "Customers" y "Subscribers".
+-   Hipótesis alternativa (Ha): Los "Customers" (usuarios ocasionales de entre 24 horas a 3 días) pueden tratar las bicicletas con menos cuidado que los "Subscribers" (tienen una suscripción anual), lo que podría reflejarse en un mayor desgaste de las bicicletas que usan.
+
+## Suposiciones:
+
+Como no tenemos datos explícitos de fallos o mantenimiento, usaremos métricas indirectas como la velocidad promedio y la distancia recorrida por tipo de usuario. Un desgaste mayor podría manifestarse en patrones de uso más bruscos (velocidades inusuales) o en bicicletas que recorren distancias cortas debido a un posible mal funcionamiento, como se hizo en una de nuestras preguntas grupales.
+
+# Análisis exploratorio inicial
+
+Antes de aplicar un test estadístico, haríamos un resumen descriptivo, esto nos dará una idea si hay diferencias notables:
+
+## Métricas
+
+-   Frecuencia de uso: Cuántos viajes ha realizado cada bicicleta (count(bikeid)).
+-   Distancia total recorrida: Suma de distance_km por bicicleta.
+-   Velocidad media: Puede mostrar velocidades más bajas en comparación con la media una bici mas lenta.
+
+## Abordaje
+
+-   Comparar la distancia media recorrida (distance_km) entre Customers y Subscribers.
+-   Comparar la velocidad promedio (speed) entre ambos grupos.
+-   Distribución de la duración del viaje (tripduration) por tipo de usuario.
+
+```{r}
+bike_usage <- df %>%
+  group_by(bikeid, usertype) %>%
+  summarise(
+    trips = n(),
+    total_distance = sum(distance_km, na.rm = TRUE),
+    avg_speed = mean(speed, na.rm = TRUE),
+    .groups = "drop"
+  )
+View(bike_usage)
+
+```
+# Selección de test
+
+## comprobación de normalidad
+```{r}
+
+#shapiro.test(bike_usage$trips)          # Para número de viajes por bicicleta
+#shapiro.test(bike_usage$total_distance) # Para distancia total recorrida
+#shapiro.test(bike_usage$avg_speed)      # Para velocidad promedio
+
+```
+
+```{r}
+# Histogramas de las variables clave
+hist(bike_usage$trips, main="Distribución del número de viajes", xlab="Viajes por bicicleta")
+hist(bike_usage$total_distance, main="Distribución de distancia total", xlab="Distancia (km)")
+hist(bike_usage$avg_speed, main="Distribución de velocidad promedio",breaks = 100, ,xlim = c(0, 15), xlab="Velocidad (km/h)")
+
+# QQ-plot para comparar con una normal
+qqnorm(bike_usage$trips); qqline(bike_usage$trips, col = "red")
+qqnorm(bike_usage$total_distance); qqline(bike_usage$total_distance, col = "red")
+qqnorm(bike_usage$avg_speed); qqline(bike_usage$avg_speed, col = "red")
+
+```
+
+# Test de Mann-Whitney U
+```{r}
+# Test de Mann-Whitney para la cantidad de viajes por bicicleta
+wilcox.test(trips ~ usertype, data = bike_usage)
+
+# Test de Mann-Whitney para la distancia total recorrida
+wilcox.test(total_distance ~ usertype, data = bike_usage)
+
+# Test de Mann-Whitney para la velocidad media
+wilcox.test(avg_speed ~ usertype, data = bike_usage)
+
+```

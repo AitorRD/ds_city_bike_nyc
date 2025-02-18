@@ -71,9 +71,7 @@ df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station
 df <- df %>% mutate(speed = (distance_km / tripduration)*60)
 View(df)
 ```
-```{r}
-min(df$edad, na.rm = TRUE)
-```
+
 ## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
 
 Explicar las preguntas en este apartado y que queremos resolver.
