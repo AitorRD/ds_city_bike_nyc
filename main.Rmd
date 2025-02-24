@@ -21,18 +21,75 @@ library(readr)
 library(geosphere)
 ```
 
+# New York City Bike Análisis
+
 ## Introducción
 
-Explicar un poco el objetivo del trabajo y demás. Siguiendo la rúbrica: - ¿De qué va el trabajo? - ¿Por qué es interesante? - ¿Volumen de negocio del dominio? - ¿Importancia local/nacional y en el contexto actual
+Este proyecto ha sido realizado por el Equipo 2. La comunicación entre los miembros del grupo se ha llevado a cabo a través de reuniones y mensajes en Discord. La gestión del proyecto se ha realizado mediante un repositorio en GitHub. Se eligió R como lenguaje de programación, ya que consideramos que se alineaba mejor con la asignatura, dado que todos los conocimientos técnicos impartidos han sido en este lenguaje.
 
-## Descripción del dataset
+## Descripción del Dominio
 
-Explicar el dataset. Siguiendo la rúbrica: - Indicar el tamaño en KB/MB/GB del dataset - Indicar el número de filas y columnas - Indicar origen del dataset
+El proyecto se centra en el análisis de datos de **Citi Bike**, un sistema de bicicletas compartidas en la ciudad de Nueva York. Citi Bike permite a los usuarios alquilar bicicletas en diferentes estaciones distribuidas por la ciudad. Más información sobre el servicio está disponible en su página web oficial: [Citi Bike NYC](https://citibikenyc.com/homepage).
 
-## Importación, limpieza y tratamiento
+El estudio de los datos de Citi Bike es relevante porque refleja **patrones de movilidad urbana** en una de las ciudades más transitadas del mundo. Como **estudiantes de Data Science**, este análisis nos permite aplicar técnicas de **procesamiento, limpieza y modelado de datos** a un caso real con un gran impacto en la planificación urbana y la sostenibilidad.
 
-Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.
-```{r compilación y obtención del dataset base}
+Además, el sector de la **micromovilidad** está en crecimiento, y comprender el comportamiento de los usuarios puede aportar **insights valiosos** para mejorar la eficiencia del sistema y fomentar el uso del **transporte sostenible** en otras ciudades.
+
+## Descripción del Dataset
+
+Los datos provienen del sistema de información de Citi Bike, disponible en este [enlace](https://citibikenyc.com/system-data). Como se menciona en la web, el número y tipo de variables han cambiado a lo largo del tiempo, en particular en enero de 2021 (no incluido en nuestro análisis). Además, a partir de septiembre de 2015 (incluido), los datos se encuentran en formato CSV, como se puede observar en este [índice](https://s3.amazonaws.com/tripdata/index.html) de datos en crudo. Por lo tanto, se ha decidido que el rango de análisis abarque desde septiembre de 2015 hasta enero de 2021.
+
+Los datos están organizados por meses y comprimidos en archivos ZIP. La estrategia inicial para importar y procesar esta información fue descomprimir y combinar todos los datos en orden cronológico. Sin embargo, surgió un primer obstáculo: a partir de algunos meses de 2017 y/o 2018, los nombres de las columnas cambiaron (aunque el formato era el mismo, había diferencias en mayúsculas y minúsculas, por ejemplo). Al unificar los datos, algunos tipos de datos no coincidían y se generaban duplicaciones de variables.
+
+Para solucionar este problema, se decidió **unificar los nombres de todas las columnas en minúsculas**. Una vez normalizados los datos, se organizó cada año en archivos CSV individuales y se almacenaron en una carpeta denominada `"combined"`, donde se prepararon para su procesamiento final. Para poder gestionar archivos de gran tamaño en GitHub, se utilizó **Git Large File Storage (Git LFS)**.
+
+Este fue el código usado para compilar cada mes de cada año:
+
+```{r echo=TRUE, eval=FALSE}
+cat("Buscando archivos en:", getwd(), "\n")
+archivos_csv <- list.files(path = getwd(), pattern = "(?i)\.csv$", full.names = TRUE)
+cat("Archivos encontrados:\n")
+print(archivos_csv)
+
+# Verificar si hay archivos CSV en la carpeta
+if (length(archivos_csv) == 0) {
+  stop("No se encontraron archivos CSV en la carpeta. Verifica la ruta o la extensión de los archivos.")
+}
+
+# Función para renombrar columnas
+renombrar_columnas <- function(df) {
+  colnames(df) <- c("tripduration", "starttime", "stoptime", "start.station.id",
+                    "start.station.name", "start.station.latitude", "start.station.longitude",
+                    "end.station.id", "end.station.name", "end.station.latitude", "end.station.longitude",
+                    "bikeid", "usertype", "birth.year", "gender")
+  return(df)
+}
+
+# Leer y combinar todos los archivos CSV
+cat("Procesando archivos...\n")
+df_combinado <- archivos_csv %>%
+  lapply(function(archivo) {
+    cat("Procesando:", archivo, "\n")
+    df <- read_csv(archivo)
+    renombrar_columnas(df)
+  }) %>%
+  bind_rows() %>%
+  mutate(birth.year = as.numeric(birth.year))
+
+# Obtener el año de los archivos y construir el nombre de salida
+nombres_archivos <- basename(archivos_csv)
+años_detectados <- unique(gsub(".*(\\d{4}).csv$", "\\1", nombres_archivos))
+nombre_salida <- paste0("citibike_tripdata_combinado_", paste(años_detectados, collapse = "_"), ".csv")
+
+# Guardar el dataset combinado
+write_csv(df_combinado, nombre_salida)
+cat("Proceso completado. Archivo guardado en", nombre_salida, "\n")
+
+```
+
+Este fragmento para combinarlos y crear el dataset desde el que partimos el proyecto:
+
+```{r echo=TRUE, eval=FALSE}
 archivos_csv <- list.files(path = "data/combined", pattern = "(?i)\\.csv$", full.names = TRUE)
 nombres_columnas <- c("tripduration", "starttime", "stoptime", "start.station.id",
                       "start.station.name", "start.station.latitude", "start.station.longitude",
@@ -50,9 +107,49 @@ df_combinado <- archivos_csv %>%
 
 write_csv(df_combinado, "data/bike_data.csv")
 ```
-# TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
-# TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
+El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguientes características:
+
+-   **Tamaño del dataset:** 271 MB.\
+-   **Número de filas y columnas:** 1.702.660 filas y 15 columnas.
+
+## Importación, limpieza y tratamiento
+
+### Descripción de las Variables del Dataset
+
+1.  **Trip Duration (seconds)**
+    -   Duración total del viaje en segundos.
+2.  **Start Time and Date**
+    -   Fecha y hora de inicio del viaje.
+3.  **Stop Time and Date**
+    -   Fecha y hora de finalización del viaje.
+4.  **Start Station ID**
+    -   Identificador único de la estación de inicio.
+5.  **Start Station Name**: - Nombre de la estación de inicio.
+6.  **Start Station Latitude**:\
+    -   Latitud de la estación de inicio.
+7.  **Start Station Longitude**: - Longitud de la estación de inicio.
+8.  **End Station ID**
+    -   Identificador único de la estación de destino.
+9.  **End Station Name**
+    -   Nombre de la estación de destino.
+10. **End Station Latitude**
+    -   Latitud de la estación de destino.
+11. **End Station Longitude**
+    -   Longitud de la estación de destino.
+12. **Bike ID**
+    -   Identificador único de la bicicleta utilizada en el viaje.
+13. **User Type**
+    -   Tipo de usuario:
+        -   **Customer**: Usuario con pase de 24 horas o 3 días.
+        -   **Subscriber**: Miembro anual del servicio.
+14. **Gender** - Género del usuario:
+    -   **0** = No disponible
+    -   **1** = Hombre
+    -   **2** = Mujer
+15. **Year of Birth** - Año de nacimiento del usuario.
+
+A continuación se muestra el tratamiento que se le hace a los datos originales:
 
 ```{r importacion_limpieza_tratamiento}
 
@@ -69,16 +166,30 @@ df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station
 
 
 df <- df %>% mutate(speed = (distance_km / tripduration)*60)
-
-
-
 ```
+
+# TODO: Poner los cambios explicitos en modo tabla o como sea.
+
+# TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+
+# TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
 ## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
 
 Explicar las preguntas en este apartado y que queremos resolver.
 
 Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+
+
+
+
+
+
+
+
+
+
+==============================================================================================================================
 
 ## Resolución de preguntas
 
