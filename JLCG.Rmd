@@ -1,0 +1,115 @@
+---
+title: "Proyecto Data Science - City Bike Dataset"
+author: "Costela Guijosa, Jose Luis"
+date: "Febrero de 2025"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("readr")) install.packages("readr")
+if (!require("geosphere")) install.packages("geosphere")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+if (!require("leaflet")) install.packages("leaflet")
+if (!require("leaflet.extras")) install.packages("leaflet.extras")
+if (!require("sf")) install.packages("sf")
+if (!require("spdep")) install.packages("spdep")
+if (!require("randomForest")) install.packages("randomForest")
+if (!require("viridis")) install.packages("viridis")
+
+library(dplyr)
+library(readr)
+library(geosphere)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(leaflet.extras)
+library(sf)
+library(spdep)
+library(randomForest)
+library(viridis)
+```
+
+```{r importacion_limpieza_tratamiento}
+
+df <- read.csv("data/bike_data (1).csv", stringsAsFactors = FALSE)
+
+df %>% summarise_all(~ sum(is.na(.)))
+
+df <- df %>% select(-c(birth.year))
+df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
+df <- df %>% mutate(tripduration = tripduration / 60)
+
+df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")],
+                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+
+
+df <- df %>% mutate(speed = (distance_km / tripduration)*60)
+
+df$starttime <- ymd_hms(df$starttime)
+df$stoptime <- ymd_hms(df$stoptime)
+
+
+```
+
+## ¿Cuáles son las zonas con mayor concentración de bicicletas en la ciudad y cómo podría esto ayudar a recomendar la instalación de nuevas estaciones?
+
+El objetivo de este análisis es identificar las áreas de la ciudad con mayor concentración de viajes en bicicleta, tanto en términos de estaciones de origen como de destino. A través del estudio de estos patrones de uso, se pretende determinar si existen zonas con alta demanda donde podría ser necesario instalar nuevas estaciones para optimizar el servicio y mejorar la accesibilidad de los usuarios. Además, este análisis puede ayudar a redistribuir estaciones existentes y prever tendencias futuras en el uso del sistema Citi Bike.
+
+### Resolución de preguntas
+
+
+
+```{r zonas_calientes}
+
+# Agrupar datos por estación de inicio
+start_stations <- df %>%
+  group_by(start.station.latitude, start.station.longitude) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Crear mapa de calor con leaflet
+
+pal <- colorNumeric(palette = rev(brewer.pal(11, "RdYlBu")), domain = c(0,1), na.color = "transparent")
+
+max_value <- max(start_stations$count)
+
+start_stations %>%
+  leaflet() %>%
+  addTiles() %>%
+  addHeatmap(lng = ~start.station.longitude, lat = ~start.station.latitude, blur = 5, max = max_value, radius = 30,intensity = ~count)
+
+set.seed(123)
+
+# Seleccionar coordenadas de estaciones con mayor uso
+station_coords <- start_stations %>%
+  select(start.station.latitude, start.station.longitude, count)
+
+# Aplicar K-Means con 5 clusters
+kmeans_result <- kmeans(station_coords[, c("start.station.latitude", "start.station.longitude")], centers = 5)
+
+# Agregar cluster al dataset
+station_coords$cluster <- as.factor(kmeans_result$cluster)
+
+# Visualización de clusters
+ggplot(station_coords, aes(x = start.station.longitude, y = start.station.latitude, color = cluster, size = count)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Clusters de Alta Demanda de Bicicletas",
+       x = "Longitud", y = "Latitud", color = "Cluster") +
+  theme_minimal()
+
+
+```
+
+Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+
+Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
+
+### Conclusiones
+
+Indicar resultados y conclusiones a las preguntas.
+
+Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
