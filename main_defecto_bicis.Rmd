@@ -17,38 +17,85 @@ if (!require("geosphere")) install.packages("geosphere")
 if (!require("lubridate")) install.packages("lubridate")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("plotly")) install.packages("plotly")
+if (!require("patchwork")) install.packages("patchwork")
 
+library(patchwork)
 library(dplyr)
 library(readr)
 library(geosphere)
 library(lubridate)
 library(ggplot2)
 library(plotly)
+
 ```
 
 # TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
 # TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
+Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
+```{r importacion_limpieza_tratamiento_1}
 
-```{r importacion_limpieza_tratamiento}
-
-df <- read.csv("data/bike_data (1).csv", stringsAsFactors = FALSE)
-
+df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
 df %>% summarise_all(~ sum(is.na(.)))
 
-df <- df %>% select(-c(birth.year))
-df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
+```
+
+Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico.
+Además, en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha decidido asignar la cadena de caracteres 'NO_DEF' en aquellos registros donde el valor sea NA. Esta estrategia permite diferenciar explícitamente los datos faltantes sin afectar la estructura del conjunto de datos, facilitando su manejo en etapas posteriores del análisis.
+
+```{r importacion_limpieza_tratamiento_2}
+
+df <- df %>% mutate(usertype = ifelse(is.na(usertype), "Customer", usertype))
+df <- df %>% mutate(birth.year = ifelse(is.na(birth.year), "NO_DEF", birth.year))
+
+```
+
+El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
+
+```{r importacion_limpieza_tratamiento_3}
+
 df <- df %>% mutate(tripduration = tripduration / 60)
-
-df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
-                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
-
-
-df <- df %>% mutate(speed = (distance_km / tripduration)*60)
-
 df$starttime <- ymd_hms(df$starttime)
 df$stoptime <- ymd_hms(df$stoptime)
 
+```
+
+A continuación, se calculará la distancia recorrida entre las estaciones de inicio y fin utilizando la librería geosphere. Esta librería permite calcular la distancia entre dos puntos geográficos a partir de sus coordenadas de latitud y longitud.
+```{r importacion_limpieza_tratamiento_4}
+
+df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
+                                df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+df <- df %>% mutate(speed = (distance_km / tripduration)*60)
+
+```
+
+Por último, se ha detectado la presencia de ciertos registros en los que los valores de latitud y longitud son iguales a 0 para algunas estaciones de final del recorrido. Se ha procedido a identificar cuáles son las estaciones afectadas, con el fin de evaluar el impacto de estos datos atípicos en el análisis y determinar las acciones correctivas pertinentes.
+
+```{r importacion_limpieza_tratamiento_5}
+
+df_latlong0 <- df %>% filter(end.station.latitude == 0 | end.station.longitude == 0)
+
+df_latlong0 %>% 
+  count(end.station.name) %>%
+  arrange(desc(n))
+
+```
+
+Se ha identificado que las siguientes estaciones presentan valores de latitud y longitud iguales a cero:
+- "Indiana"
+- "JSQ Don't Use"
+- "WS Don't Use"
+- "Liberty State Park"
+
+Ante esta situación, se han definido dos estrategias de tratamiento.
+- Se ha decidido eliminar las estaciones "JSQ Don't Use" y "WS Don't Use", ya que se intuye que corresponden a estaciones que se encuentran en deshuso o no son válidas en la actualidad. Además, tienen como valores de 0 para sus longitudes y latitudes respectivamente.
+- Se procederá a verificar si existen registros válidos para las estaciones 'Indiana' y 'Liberty State Park', con el objetivo de copiar sus valores correctos de latitud y longitud en aquellas instancias donde actualmente aparecen como cero. En caso de no encontrar ninguna instancia válida, se optará por eliminar estos registros, dado que representan un número reducido de casos, específicamente tres entre ambas estaciones.
+
+```{r importacion_limpieza_tratamiento_6}
+
+df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Park")) # Se observa que en df_Ind_LSP no hay más instancias válidas, por lo que se procede a eliminar estas también
+
+df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
 
 ```
 
@@ -61,6 +108,49 @@ En esta sección, consideramos el escenario en el que somos propietarios de una 
 El dataset disponible nos permite realizar este análisis mediante la evaluación de distintos factores, como el promedio de velocidad de las bicicletas, que podría indicar la presencia de anomalías mecánicas, o la frecuencia de uso de cada unidad, lo que ayudaría a detectar aquellas que requieren una revisión más exhaustiva.
 
 ## Resolución de preguntas
+
+El primer aspecto a considerar es el preprocesamiento necesario para garantizar un análisis preciso y relevante. Para garantizar que el análisis refleje el estado actual del servicio, se ha decidido utilizar únicamente los datos del último año. Esta decisión se debe a que la información más antigua podría no ser relevante para la toma de decisiones operativas. Por ejemplo, conocer la velocidad de una bicicleta en 2016 no aportaría valor, ya que, en caso de haber presentado algún problema, es probable que ya haya sido reparada o retirada del sistema. Al centrarnos en los datos recientes, aseguramos que los hallazgos sean representativos de la situación actual y permitan tomar decisiones basadas en información actualizada.
+
+```{r bicis_supceptibles_fallo_filtrado}
+
+df_filtrado <- df %>%
+  filter(format(starttime, "%Y") %in% c("2020", "2021"))
+
+```
+
+El siguiente aspecto a considerar en el preprocesamiento es la eliminación de valores atípicos (outliers). En particular, es importante identificar y gestionar casos en los que la bicicleta haya sido tomada y dejada en la misma estación. Dado el método de cálculo utilizado para la velocidad (distancia entre estaciones dividida por el tiempo de viaje), estos casos resultan en una velocidad igual a cero. Este fenómeno puede distorsionar el análisis y afectar la interpretación de los resultados, por lo que es necesario aplicar estrategias adecuadas para su tratamiento.
+
+```{r test}
+# Boxplot de la velocidad de los viajes
+p1 <- ggplot(df_filtrado, aes(y = speed)) +
+  geom_boxplot(fill="steelblue", outlier.color="red") +
+  labs(title="Boxplot de la velocidad de los Viajes", y="Velocidad") +
+  theme_minimal()
+
+(p1)
+
+Q1 <- quantile(df_filtrado$speed, 0.25, na.rm = TRUE)
+Q3 <- quantile(df_filtrado$speed, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+limite_inferior <- Q1 - 1.5 * IQR
+limite_superior <- Q3 + 1.5 * IQR
+
+df_sin_outliers <- df_filtrado %>%
+  filter(speed >= limite_inferior & speed <= limite_superior)
+
+df_sin_outliers <- df %>%
+  filter(speed >= limite_inferior & speed <= limite_superior)
+
+# Boxplot de la velocidad de los viajes
+p1_no_outliers <- ggplot(df_sin_outliers, aes(y = speed)) +
+  geom_boxplot(fill="steelblue", outlier.color="red") +
+  labs(title="Boxplot de la velocidad de los viajes", y="Velocidad") +
+  theme_minimal()
+
+(p1_no_outliers )
+
+```
 
 Notas:
 - Comentar que cogemos el último año ya que para resolver la pregunta no nos interesan datos de hace mucho tiempo
