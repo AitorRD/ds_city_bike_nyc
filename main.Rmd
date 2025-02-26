@@ -115,6 +115,8 @@ El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguient
 
 ## Importación, limpieza y tratamiento
 
+La importanción y generación del dataset a tratar se ha mostrado en el punto previo, a continuación se mostrarán los detalles, la limpieza y el tratamiento del mismo.
+
 ### Descripción de las Variables del Dataset
 
 1.  **Trip Duration (seconds)**
@@ -149,47 +151,86 @@ El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguient
     -   **2** = Mujer
 15. **Year of Birth** - Año de nacimiento del usuario.
 
-A continuación se muestra el tratamiento que se le hace a los datos originales:
+### Tratamiento y Limpieza
+Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
 
-```{r importacion_limpieza_tratamiento}
-
+```{r importacion_limpieza_tratamiento_1}
 df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
-
 df %>% summarise_all(~ sum(is.na(.)))
 
-df <- df %>% select(-c(birth.year))
-df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
+```
+
+Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico. Además, en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha decidido asignar la cadena de caracteres 'NO_DEF' en aquellos registros donde el valor sea NA. Esta estrategia permite diferenciar explícitamente los datos faltantes sin afectar la estructura del conjunto de datos, facilitando su manejo en etapas posteriores del análisis.
+
+```{r importacion_limpieza_tratamiento_2}
+
+df <- df %>% mutate(usertype = ifelse(is.na(usertype), "Customer", usertype))
+df <- df %>% mutate(birth.year = ifelse(is.na(birth.year), "NO_DEF", birth.year))
+
+```
+
+El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
+
+```{r importacion_limpieza_tratamiento_3}
+
 df <- df %>% mutate(tripduration = tripduration / 60)
+df$starttime <- ymd_hms(df$starttime)
+df$stoptime <- ymd_hms(df$stoptime)
+
+```
+
+A continuación, se calculará la distancia recorrida entre las estaciones de inicio y fin utilizando la librería geosphere. Esta librería permite calcular la distancia entre dos puntos geográficos a partir de sus coordenadas de latitud y longitud.
+
+```{r importacion_limpieza_tratamiento_4}
 
 df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
-                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
-
-
+                                df[, c("end.station.longitude", "end.station.latitude")]) / 1000
 df <- df %>% mutate(speed = (distance_km / tripduration)*60)
 ```
 
-# TODO: Poner los cambios explicitos en modo tabla o como sea.
+Por último, se ha detectado la presencia de ciertos registros en los que los valores de latitud y longitud son iguales a 0 para algunas estaciones de final del recorrido. Se ha procedido a identificar cuáles son las estaciones afectadas, con el fin de evaluar el impacto de estos datos atípicos en el análisis y determinar las acciones correctivas pertinentes.
 
-# TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+```{r importacion_limpieza_tratamiento_5}
 
-# TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
+df_latlong0 <- df %>% filter(end.station.latitude == 0 | end.station.longitude == 0)
+
+df_latlong0 %>% 
+  count(end.station.name) %>%
+  arrange(desc(n))
+
+```
+
+Se ha identificado que las siguientes estaciones presentan valores de latitud y longitud iguales a cero:
+
+-   "Indiana"
+-   "JSQ Don't Use"
+-   "WS Don't Use"
+-   "Liberty State Park"
+
+Ante esta situación, se han definido dos estrategias de tratamiento. - Se ha decidido eliminar las estaciones "JSQ Don't Use" y "WS Don't Use", ya que se intuye que corresponden a estaciones que se encuentran en deshuso o no son válidas en la actualidad. Además, tienen como valores de 0 para sus longitudes y latitudes respectivamente. - Se procederá a verificar si existen registros válidos para las estaciones 'Indiana' y 'Liberty State Park', con el objetivo de copiar sus valores correctos de latitud y longitud en aquellas instancias donde actualmente aparecen como cero. En caso de no encontrar ninguna instancia válida, se optará por eliminar estos registros, dado que representan un número reducido de casos, específicamente tres entre ambas estaciones.
+
+```{r importacion_limpieza_tratamiento_6}
+
+df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Park")) # Se observa que en df_Ind_LSP no hay más instancias válidas, por lo que se procede a eliminar estas también
+
+df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
+```
+
+# TODO:
+
+-   Poner los cambios explicitos en modo tabla o como sea.
+-   Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+-   Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
 ## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
+
+-   **¿Cuándo realizo el mantenimiento de las bicicletas?**
+
+-   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
 
 Explicar las preguntas en este apartado y que queremos resolver.
 
 Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
-
-
-
-
-
-
-
-
-
-
-==============================================================================================================================
 
 ## Resolución de preguntas
 
@@ -204,3 +245,5 @@ Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? �
 Indicar resultados y conclusiones a las preguntas.
 
 Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+
+## Preguntas Individuales
