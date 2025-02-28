@@ -12,26 +12,25 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+if (!require("tidyr")) install.packages("tidyr")
 if (!require("dplyr")) install.packages("dplyr")
 if (!require("readr")) install.packages("readr")
+if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("geosphere")) install.packages("geosphere")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("leaflet")) install.packages("leaflet")
+if (!require("leaflet.extras")) install.packages("leaflet.extras")
 
+
+library(tidyr)
 library(dplyr)
 library(readr)
+library(ggplot2)
 library(geosphere)
+library(lubridate)
+library(leaflet)
+library(leaflet.extras)
 ```
-
-## Introducción
-
-Explicar un poco el objetivo del trabajo y demás. Siguiendo la rúbrica: - ¿De qué va el trabajo? - ¿Por qué es interesante? - ¿Volumen de negocio del dominio? - ¿Importancia local/nacional y en el contexto actual
-
-## Descripción del dataset
-
-Explicar el dataset. Siguiendo la rúbrica: - Indicar el tamaño en KB/MB/GB del dataset - Indicar el número de filas y columnas - Indicar origen del dataset
-
-## Importación, limpieza y tratamiento
-
-Siguiendo la rúbrica: Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.Describen los detalles, problemas, transformaciones realizadas al importar y limpiar el dataset, o como mínimo indican que no ha habido ninguno. Si el dataset estaba pre-tratado indican la fuente y quien realizó el tratamiento.
 
 ```{r compilación y obtención del dataset base}
 archivos_csv <- list.files(path = "data/combined", pattern = "(?i)\\.csv$", full.names = TRUE)
@@ -50,52 +49,74 @@ df_combinado <- archivos_csv %>%
   }) %>%
   bind_rows()
 
-write_csv(df_combinado, "data/bike_datas.csv")
+write_csv(df_combinado, "data/bike_data.csv")
 ```
-
-# TODO: Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
-
-# TODO: Hay que revisar que hay velocidades de tortuga. Quitar outliers?
-
-```{r importacion_limpieza_tratamiento}
-
+```{r importacion_limpieza_tratamiento_1}
 df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
-
 df %>% summarise_all(~ sum(is.na(.)))
 
-df <- df %>% select(-c(birth.year))
-df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
-df <- df %>% mutate(tripduration = tripduration / 60)
+```
 
-df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
-                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico. Además, en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha decidido asignar la cadena de caracteres 'NO_DEF' en aquellos registros donde el valor sea NA. Esta estrategia permite diferenciar explícitamente los datos faltantes sin afectar la estructura del conjunto de datos, facilitando su manejo en etapas posteriores del análisis.
 
+```{r importacion_limpieza_tratamiento_2}
 
-df <- df %>% mutate(speed = (distance_km / tripduration)*60)
-
-
+df <- df %>% mutate(usertype = ifelse(is.na(usertype), "Customer", usertype))
+df <- df %>% mutate(birth.year = ifelse(is.na(birth.year), "NO_DEF", birth.year))
 
 ```
 
-## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
+El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
 
-Explicar las preguntas en este apartado y que queremos resolver.
+```{r importacion_limpieza_tratamiento_3}
 
-Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+df <- df %>% mutate(tripduration = tripduration / 60)
+df$starttime <- ymd_hms(df$starttime)
+df$stoptime <- ymd_hms(df$stoptime)
 
-## Resolución de preguntas
+```
 
-Resolvemos aquí las preguntas etc etc.
+A continuación, se calculará la distancia recorrida entre las estaciones de inicio y fin utilizando la librería geosphere. Esta librería permite calcular la distancia entre dos puntos geográficos a partir de sus coordenadas de latitud y longitud.
 
-Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+```{r importacion_limpieza_tratamiento_4}
 
-Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
+df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
+                                df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+df <- df %>% mutate(speed = (distance_km / tripduration)*60)
+```
 
-# ¿Cuando realizo el mantenimiento de las bicicletas?
+Por último, se ha detectado la presencia de ciertos registros en los que los valores de latitud y longitud son iguales a 0 para algunas estaciones de final del recorrido. Se ha procedido a identificar cuáles son las estaciones afectadas, con el fin de evaluar el impacto de estos datos atípicos en el análisis y determinar las acciones correctivas pertinentes.
+
+```{r importacion_limpieza_tratamiento_5}
+
+df_latlong0 <- df %>% filter(end.station.latitude == 0 | end.station.longitude == 0)
+
+df_latlong0 %>% 
+  count(end.station.name) %>%
+  arrange(desc(n))
+
+```
+
+Se ha identificado que las siguientes estaciones presentan valores de latitud y longitud iguales a cero:
+
+-   "Indiana"
+-   "JSQ Don't Use"
+-   "WS Don't Use"
+-   "Liberty State Park"
+
+Ante esta situación, se han definido dos estrategias de tratamiento. - Se ha decidido eliminar las estaciones "JSQ Don't Use" y "WS Don't Use", ya que se intuye que corresponden a estaciones que se encuentran en deshuso o no son válidas en la actualidad. Además, tienen como valores de 0 para sus longitudes y latitudes respectivamente. - Se procederá a verificar si existen registros válidos para las estaciones 'Indiana' y 'Liberty State Park', con el objetivo de copiar sus valores correctos de latitud y longitud en aquellas instancias donde actualmente aparecen como cero. En caso de no encontrar ninguna instancia válida, se optará por eliminar estos registros, dado que representan un número reducido de casos, específicamente tres entre ambas estaciones.
+
+```{r importacion_limpieza_tratamiento_6}
+
+df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Park")) # Se observa que en df_Ind_LSP no hay más instancias válidas, por lo que se procede a eliminar estas también
+
+df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
+```
+
+# Preguntas grupales
+## ¿Cuando realizo el mantenimiento de las bicicletas?
 
 El análisis a realizar para responder a esta pregunta es identificar los períodos de menor uso de las bicicletas, lo que nos permitirá recomendar los meses y estaciones más adecuados para realizar el mantenimiento sin afectar significativamente la disponibilidad del servicio.
-
-Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
 
 ## Resolución de preguntas
 
@@ -111,77 +132,98 @@ Se usa un gráfico de barras con ggplot2, donde el eje X representa los meses y 
 
 -   Evita interrupciones en la demanda: Si realizamos mantenimiento en los meses con menor uso, reducimos el impacto en los usuarios.
 
--   Aprovecha la estacionalidad: En muchos lugares, la demanda baja en invierno debido al clima, lo que lo hace un momento ideal para mantenimiento. · Permite planificación basada en datos: En lugar de hacer mantenimientos arbitrarios, tomamos decisiones respaldadas por datos históricos.
+-   Aprovecha la estacionalidad: En muchos lugares, la demanda baja en invierno debido al clima, lo que lo hace un momento ideal para mantenimiento.
 
-Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+-   Permite planificación basada en datos: En lugar de hacer mantenimientos arbitrarios, tomamos decisiones respaldadas por datos históricos.
 
 ```{r}
-library(ggplot2)
-library(lubridate)
+df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)  
 
-
-df$starttime <- ymd_hms(df$starttime, tz="UTC")
-
-df$month <- month(df$starttime, label = TRUE, abbr = TRUE)  
-
-
-df$season <- case_when(
-  df$month %in% c("dic", "ene", "feb") ~ "Invierno",
-  df$month %in% c("mar", "abr", "may") ~ "Primavera",
-  df$month %in% c("jun", "jul", "ago") ~ "Verano",
-  df$month %in% c("sep", "oct", "nov") ~ "Otoño",
+df_preprocesado$season <- case_when(
+  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
+  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
+  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
+  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
   TRUE ~ NA_character_  
 )
 
-df_counts <- df %>% 
+df_counts <- df_preprocesado %>% 
   group_by(month, season) %>% 
   summarise(total_rides = n(), .groups = 'drop')
-
-df_counts
-
 ggplot(df_counts, aes(x = month, y = total_rides, fill = season)) +
   geom_bar(stat = "identity") +
   labs(title = "Uso de bicicletas por mes y estación del año",
        x = "Mes", y = "Número de viajes") +
   theme_minimal()
+```
+```{r}
+df_preprocesado$year <- year(df_preprocesado$starttime)
+df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)
+df_preprocesado %>% count(year)
+df_preprocesado <- df_preprocesado %>% filter(!is.na(year) & year >= 2015 & year <= 2021)
+df_preprocesado %>% count(year)
+
+df_preprocesado$season <- case_when(
+  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
+  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
+  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
+  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
+  TRUE ~ NA_character_  
+)
+
+df_counts_per_year <- df_preprocesado %>% 
+  group_by(year, month, season) %>% 
+  summarise(total_rides = n(), .groups = 'drop')
+
+ggplot(df_counts_per_year, aes(x = month, y = total_rides, fill = season)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~year, scales = "free_y", ncol = 2, strip.position = "top") +  
+  labs(title = "Número de viajes por mes y año (2015-2020)",
+       x = "Mes", y = "Número de viajes") + 
+  ylim(0, 50000) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  
+        strip.text = element_text(size = 14, face = "bold"),  
+        panel.spacing = unit(0.5, "lines"),  
+        strip.placement = "outside")
+  
+```
+```{r}
+df_preprocesado$weekday <- wday(df_preprocesado$starttime, label = TRUE, abbr = FALSE, week_start = 1)
+
+df_counts_per_day <- df_preprocesado %>%
+  group_by(weekday) %>%
+  summarise(total_rides = n(), .groups = 'drop')
+
+df_counts_per_day$weekday <- factor(df_counts_per_day$weekday, 
+                                  levels = c("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"))
+
+ggplot(df_counts_per_day, aes(x = weekday, y = total_rides, fill = weekday)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Uso total de bicicletas por día de la semana",
+       x = "Día de la semana", y = "Número de viajes") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#ffff00", "#ff0000", "#00ff00")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
 
 ```
 
 ```{r}
-
-df$hour <- hour(df$starttime)
-df$time_period <- case_when(
-  df$hour >= 0 & df$hour < 6  ~ "Madrugada",
-  df$hour >= 6 & df$hour < 12 ~ "Mañana",
-  df$hour >= 12 & df$hour < 18 ~ "Tarde",
-  df$hour >= 18 & df$hour < 24 ~ "Noche",
+df_preprocesado$hour <- hour(df_preprocesado$starttime)
+df_preprocesado$time_period <- case_when(
+  df_preprocesado$hour >= 0 & df_preprocesado$hour < 6  ~ "Madrugada",
+  df_preprocesado$hour >= 6 & df_preprocesado$hour < 12 ~ "Mañana",
+  df_preprocesado$hour >= 12 & df_preprocesado$hour < 18 ~ "Tarde",
+  df_preprocesado$hour >= 18 & df_preprocesado$hour < 24 ~ "Noche",
   TRUE ~ NA_character_
 )
 
-
-df_counts <- df %>%
-  group_by(time_period) %>%
-  summarise(total_rides = n(), .groups = 'drop')
-
-df_counts
-
-ggplot(df_counts, aes(x = time_period, y = total_rides, fill = time_period)) +
-  geom_bar(stat = "identity") +
-  labs(title = "Uso de bicicletas por franja horaria",
-       x = "Franja horaria", y = "Número de viajes") +
-  theme_minimal() +
-  scale_fill_manual(values = c("Madrugada" = "#1b9e77", "Mañana" = "#d95f02",
-                               "Tarde" = "#7570b3", "Noche" = "#e7298a"))
-```
-
-```{r}
-df_counts <- df %>%
+df_counts <- df_preprocesado %>%
   group_by(season, time_period) %>%
   summarise(total_rides = n(), .groups = 'drop')
-
 df_counts
 
-# Visualizar el uso de bicicletas por franja horaria y estación del año
 ggplot(df_counts, aes(x = time_period, y = total_rides, fill = season)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(title = "Uso de bicicletas por franja horaria y estación del año",
@@ -192,54 +234,103 @@ ggplot(df_counts, aes(x = time_period, y = total_rides, fill = season)) +
 ```
 
 ```{r}
-df <- df %>%
-  mutate(start_hour = hour(starttime),
-         start_day = wday(starttime, label = TRUE))
+df_preprocesado <- df_preprocesado %>%
+  mutate(start_hour = hour(starttime))
 
-df
+hourly_usage <- df_preprocesado %>%
+  group_by(start_hour) %>%
+  summarise(trips = n(), .groups = "drop") %>%
+  arrange(start_hour)
+hourly_usage$start_hour <- factor(hourly_usage$start_hour, levels = 0:23)
 
-# Contar número de viajes por estación de inicio
-station_usage <- df %>%
+
+hourly_usage$color <- case_when(
+  hourly_usage$trips > 150000 ~ "#FF0000",
+  hourly_usage$trips > 100000 ~ "#FFA500",
+  hourly_usage$trips > 50000  ~ "#FFD700",
+  TRUE                        ~ "steelblue"
+)
+
+ggplot(hourly_usage, aes(x = start_hour, y = trips, fill = color)) +
+  geom_col() +
+  scale_fill_identity() +  
+  labs(title = "Cantidad de viajes por hora",
+       x = "Hora del día",
+       y = "Número de viajes") +
+  theme_minimal() +
+  scale_x_discrete(labels = 0:23) +  
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5)) 
+```
+
+```{r}
+station_usage <- df_preprocesado %>%
   group_by(start.station.id, start.station.name, start.station.latitude, start.station.longitude) %>%
   summarise(total_starts = n(), .groups = "drop") %>%
   arrange(desc(total_starts))
 
-# Contar número de viajes por hora del día sin advertencia
-hourly_usage <- df %>%
-  group_by(start_hour) %>%
-  summarise(trips = n(), .groups = "drop") %>%
-  arrange(trips)
+quartiles <- quantile(station_usage$total_starts, probs = c(0.25, 0.5, 0.75, 1))
+station_usage$icon_color <- case_when(
+  station_usage$total_starts <= quartiles[1] ~ "blue",
+  station_usage$total_starts <= quartiles[2] ~ "green",
+  station_usage$total_starts <= quartiles[3] ~ "orange",
+  TRUE ~ "red")
 
-hourly_usage
+bike_icon <- function(color) {
+  awesomeIcons(
+  icon = "bicycle", 
+  library = "fa",  # Esto nos lo ha prporcionado ChatGPT
+  markerColor = color)
+}
 
-station_usage
+l1 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addAwesomeMarkers(
+  lng = ~start.station.longitude,
+  lat = ~start.station.latitude,
+  icon = ~bike_icon(icon_color),
+  label = ~paste0(start.station.name, ": ", total_starts, " viajes")) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
 
-ggplot(hourly_usage, aes(x = start_hour, y = trips)) +
-  geom_col(fill = "steelblue") +
-  labs(title = "Cantidad de viajes por hora",
-       x = "Hora del día",
-       y = "Número de viajes") +
-  theme_minimal()
+l2 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addCircleMarkers(
+  lng = ~start.station.longitude,
+  lat = ~start.station.latitude,
+  color = ~icon_color,
+  radius = ~sqrt(total_starts) * 0.1,
+  stroke = FALSE,
+  fillOpacity = 0.7,
+  label = ~paste0(start.station.name, ": ", total_starts, " viajes")
+  ) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
 
-
-
-library(leaflet)
-summary(station_usage)
-station_usage <- station_usage %>%
-  filter(!is.na(start.station.longitude) & !is.na(start.station.latitude))
-#
-#leaflet(data = station_usage) %>%
-#  addTiles() %>%
-#  addCircleMarkers(
-#    lng = ~start.station.longitude, 
-#    lat = ~start.station.latitude,
-#    radius = ~sqrt(total_starts) * 2, 
-#    color = "red",
-#    stroke = FALSE,  # Eliminar borde
-#    fillOpacity = 0.5,
-#    label = ~paste0(start.station.name, ": ", total_starts, " viajes")
-#  )
-
+l3 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~start.station.longitude,
+    lat = ~start.station.latitude,
+    intensity = ~total_starts,  # La intensidad depende de los viajes
+    blur = 20,  # Desenfoque para suavizar el mapa de calor
+    max = 0.1,  # Máxima intensidad
+    radius = 15  # Radio de los puntos del mapa de calor
+  ) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
+#l3 mapa de calor
+l1
+l2
+l3
 ```
 
 ## Conclusiones
