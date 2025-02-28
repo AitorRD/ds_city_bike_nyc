@@ -15,10 +15,18 @@ knitr::opts_chunk$set(echo = TRUE)
 if (!require("dplyr")) install.packages("dplyr")
 if (!require("readr")) install.packages("readr")
 if (!require("geosphere")) install.packages("geosphere")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+if (!require("patchwork")) install.packages("patchwork")
 
+library(patchwork)
 library(dplyr)
 library(readr)
 library(geosphere)
+library(lubridate)
+library(ggplot2)
+library(plotly)
 ```
 
 # New York City Bike Análisis
