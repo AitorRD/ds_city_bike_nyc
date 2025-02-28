@@ -18,6 +18,8 @@ if (!require("readr")) install.packages("readr")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("geosphere")) install.packages("geosphere")
 if (!require("lubridate")) install.packages("lubridate")
+if (!require("plotly")) install.packages("plotly")
+if (!require("patchwork")) install.packages("patchwork")
 if (!require("leaflet")) install.packages("leaflet")
 if (!require("leaflet.extras")) install.packages("leaflet.extras")
 
@@ -28,11 +30,81 @@ library(readr)
 library(ggplot2)
 library(geosphere)
 library(lubridate)
+library(plotly)
+library(patchwork)
 library(leaflet)
 library(leaflet.extras)
 ```
 
-```{r compilación y obtención del dataset base}
+# New York City Bike Análisis
+
+## Introducción
+
+Este proyecto ha sido realizado por el Equipo 2. La comunicación entre los miembros del grupo se ha llevado a cabo a través de reuniones y mensajes en Discord. La gestión del proyecto se ha realizado mediante un repositorio en GitHub. Se eligió R como lenguaje de programación, ya que consideramos que se alineaba mejor con la asignatura, dado que todos los conocimientos técnicos impartidos han sido en este lenguaje.
+
+## Descripción del Dominio
+
+El proyecto se centra en el análisis de datos de **Citi Bike**, un sistema de bicicletas compartidas en la ciudad de Nueva York. Citi Bike permite a los usuarios alquilar bicicletas en diferentes estaciones distribuidas por la ciudad. Más información sobre el servicio está disponible en su página web oficial: [Citi Bike NYC](https://citibikenyc.com/homepage).
+
+El estudio de los datos de Citi Bike es relevante porque refleja **patrones de movilidad urbana** en una de las ciudades más transitadas del mundo. Como **estudiantes de Data Science**, este análisis nos permite aplicar técnicas de **procesamiento, limpieza y modelado de datos** a un caso real con un gran impacto en la planificación urbana y la sostenibilidad.
+
+Además, el sector de la **micromovilidad** está en crecimiento, y comprender el comportamiento de los usuarios puede aportar **insights valiosos** para mejorar la eficiencia del sistema y fomentar el uso del **transporte sostenible** en otras ciudades.
+
+## Descripción del Dataset
+
+Los datos provienen del sistema de información de Citi Bike, disponible en este [enlace](https://citibikenyc.com/system-data). Como se menciona en la web, el número y tipo de variables han cambiado a lo largo del tiempo, en particular en enero de 2021 (no incluido en nuestro análisis). Además, a partir de septiembre de 2015 (incluido), los datos se encuentran en formato CSV, como se puede observar en este [índice](https://s3.amazonaws.com/tripdata/index.html) de datos en crudo. Por lo tanto, se ha decidido que el rango de análisis abarque desde septiembre de 2015 hasta enero de 2021.
+
+Los datos están organizados por meses y comprimidos en archivos ZIP. La estrategia inicial para importar y procesar esta información fue descomprimir y combinar todos los datos en orden cronológico. Sin embargo, surgió un primer obstáculo: a partir de algunos meses de 2017 y/o 2018, los nombres de las columnas cambiaron (aunque el formato era el mismo, había diferencias en mayúsculas y minúsculas, por ejemplo). Al unificar los datos, algunos tipos de datos no coincidían y se generaban duplicaciones de variables.
+
+Para solucionar este problema, se decidió **unificar los nombres de todas las columnas en minúsculas**. Una vez normalizados los datos, se organizó cada año en archivos CSV individuales y se almacenaron en una carpeta denominada `"combined"`, donde se prepararon para su procesamiento final. Para poder gestionar archivos de gran tamaño en GitHub, se utilizó **Git Large File Storage (Git LFS)**.
+
+Este fue el código usado para compilar cada mes de cada año (estos compiler los obtuvimos de ChatGPT):
+
+```{r echo=TRUE, eval=FALSE}
+cat("Buscando archivos en:", getwd(), "\n")
+archivos_csv <- list.files(path = getwd(), pattern = "(?i)\.csv$", full.names = TRUE)
+cat("Archivos encontrados:\n")
+print(archivos_csv)
+
+# Verificar si hay archivos CSV en la carpeta
+if (length(archivos_csv) == 0) {
+  stop("No se encontraron archivos CSV en la carpeta. Verifica la ruta o la extensión de los archivos.")
+}
+
+# Función para renombrar columnas
+renombrar_columnas <- function(df) {
+  colnames(df) <- c("tripduration", "starttime", "stoptime", "start.station.id",
+                    "start.station.name", "start.station.latitude", "start.station.longitude",
+                    "end.station.id", "end.station.name", "end.station.latitude", "end.station.longitude",
+                    "bikeid", "usertype", "birth.year", "gender")
+  return(df)
+}
+
+# Leer y combinar todos los archivos CSV
+cat("Procesando archivos...\n")
+df_combinado <- archivos_csv %>%
+  lapply(function(archivo) {
+    cat("Procesando:", archivo, "\n")
+    df <- read_csv(archivo)
+    renombrar_columnas(df)
+  }) %>%
+  bind_rows() %>%
+  mutate(birth.year = as.numeric(birth.year))
+
+# Obtener el año de los archivos y construir el nombre de salida
+nombres_archivos <- basename(archivos_csv)
+años_detectados <- unique(gsub(".*(\\d{4}).csv$", "\\1", nombres_archivos))
+nombre_salida <- paste0("citibike_tripdata_combinado_", paste(años_detectados, collapse = "_"), ".csv")
+
+# Guardar el dataset combinado
+write_csv(df_combinado, nombre_salida)
+cat("Proceso completado. Archivo guardado en", nombre_salida, "\n")
+
+```
+
+Este fragmento para combinarlos y crear el dataset desde el que partimos el proyecto:
+
+```{r echo=TRUE, eval=FALSE}
 archivos_csv <- list.files(path = "data/combined", pattern = "(?i)\\.csv$", full.names = TRUE)
 nombres_columnas <- c("tripduration", "starttime", "stoptime", "start.station.id",
                       "start.station.name", "start.station.latitude", "start.station.longitude",
@@ -51,6 +123,54 @@ df_combinado <- archivos_csv %>%
 
 write_csv(df_combinado, "data/bike_data.csv")
 ```
+
+El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguientes características:
+
+-   **Tamaño del dataset:** 271 MB.\
+-   **Número de filas y columnas:** 1.702.660 filas y 15 columnas.
+
+## Importación, limpieza y tratamiento
+
+La importanción y generación del dataset a tratar se ha mostrado en el punto previo, a continuación se mostrarán los detalles, la limpieza y el tratamiento del mismo.
+
+### Descripción de las Variables del Dataset
+
+1.  **Trip Duration (seconds)**
+    -   Duración total del viaje en segundos.
+2.  **Start Time and Date**
+    -   Fecha y hora de inicio del viaje.
+3.  **Stop Time and Date**
+    -   Fecha y hora de finalización del viaje.
+4.  **Start Station ID**
+    -   Identificador único de la estación de inicio.
+5.  **Start Station Name**: - Nombre de la estación de inicio.
+6.  **Start Station Latitude**:\
+    -   Latitud de la estación de inicio.
+7.  **Start Station Longitude**: - Longitud de la estación de inicio.
+8.  **End Station ID**
+    -   Identificador único de la estación de destino.
+9.  **End Station Name**
+    -   Nombre de la estación de destino.
+10. **End Station Latitude**
+    -   Latitud de la estación de destino.
+11. **End Station Longitude**
+    -   Longitud de la estación de destino.
+12. **Bike ID**
+    -   Identificador único de la bicicleta utilizada en el viaje.
+13. **User Type**
+    -   Tipo de usuario:
+        -   **Customer**: Usuario con pase de 24 horas o 3 días.
+        -   **Subscriber**: Miembro anual del servicio.
+14. **Gender** - Género del usuario:
+    -   **0** = No disponible
+    -   **1** = Hombre
+    -   **2** = Mujer
+15. **Year of Birth** - Año de nacimiento del usuario.
+
+### Tratamiento y Limpieza
+
+Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
+
 ```{r importacion_limpieza_tratamiento_1}
 df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
 df %>% summarise_all(~ sum(is.na(.)))
@@ -113,8 +233,17 @@ df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Pa
 df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
 ```
 
+# TODO:
+
+-   Poner los cambios explicitos en modo tabla o como sea.
+-   Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+-   Hay que revisar que hay velocidades de tortuga. Quitar outliers?
+
 # Preguntas grupales
-## ¿Cuando realizo el mantenimiento de las bicicletas?
+
+## PRIMERA PREGUNTA GRUPAL:
+
+-   **¿Cuando realizo el mantenimiento de las bicicletas?**
 
 El análisis a realizar para responder a esta pregunta es identificar los períodos de menor uso de las bicicletas, lo que nos permitirá recomendar los meses y estaciones más adecuados para realizar el mantenimiento sin afectar significativamente la disponibilidad del servicio.
 
@@ -156,6 +285,7 @@ ggplot(df_counts, aes(x = month, y = total_rides, fill = season)) +
        x = "Mes", y = "Número de viajes") +
   theme_minimal()
 ```
+
 ```{r}
 df_preprocesado$year <- year(df_preprocesado$starttime)
 df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)
@@ -188,6 +318,7 @@ ggplot(df_counts_per_year, aes(x = month, y = total_rides, fill = season)) +
         strip.placement = "outside")
   
 ```
+
 ```{r}
 df_preprocesado$weekday <- wday(df_preprocesado$starttime, label = TRUE, abbr = FALSE, week_start = 1)
 
@@ -317,24 +448,30 @@ l3 <- leaflet(station_usage) %>%
   addHeatmap(
     lng = ~start.station.longitude,
     lat = ~start.station.latitude,
-    intensity = ~total_starts,  # La intensidad depende de los viajes
-    blur = 20,  # Desenfoque para suavizar el mapa de calor
-    max = 0.1,  # Máxima intensidad
-    radius = 15  # Radio de los puntos del mapa de calor
+    intensity = ~total_starts,
+    blur = 20,
+    max = 0.1,
+    radius = 15
   ) %>%
   addLegend(
   colors = c("blue", "green", "orange", "red"),
   labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
   title = "Uso de estaciones (Cuartiles)",
   position = "bottomright")
-#l3 mapa de calor
+
 l1
 l2
 l3
 ```
+
+## SEGUNDA PREGUNTA GRUPAL:
+
+-   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
 
 ## Conclusiones
 
 Indicar resultados y conclusiones a las preguntas.
 
 Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+
+## Preguntas Individuales
