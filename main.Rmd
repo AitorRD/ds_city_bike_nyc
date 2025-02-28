@@ -12,21 +12,28 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+if (!require("tidyr")) install.packages("tidyr")
 if (!require("dplyr")) install.packages("dplyr")
 if (!require("readr")) install.packages("readr")
+if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("geosphere")) install.packages("geosphere")
 if (!require("lubridate")) install.packages("lubridate")
-if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("plotly")) install.packages("plotly")
 if (!require("patchwork")) install.packages("patchwork")
+if (!require("leaflet")) install.packages("leaflet")
+if (!require("leaflet.extras")) install.packages("leaflet.extras")
 
-library(patchwork)
+
+library(tidyr)
 library(dplyr)
 library(readr)
+library(ggplot2)
 library(geosphere)
 library(lubridate)
-library(ggplot2)
 library(plotly)
+library(patchwork)
+library(leaflet)
+library(leaflet.extras)
 ```
 
 # New York City Bike Análisis
@@ -51,7 +58,7 @@ Los datos están organizados por meses y comprimidos en archivos ZIP. La estrate
 
 Para solucionar este problema, se decidió **unificar los nombres de todas las columnas en minúsculas**. Una vez normalizados los datos, se organizó cada año en archivos CSV individuales y se almacenaron en una carpeta denominada `"combined"`, donde se prepararon para su procesamiento final. Para poder gestionar archivos de gran tamaño en GitHub, se utilizó **Git Large File Storage (Git LFS)**.
 
-Este fue el código usado para compilar cada mes de cada año:
+Este fue el código usado para compilar cada mes de cada año (estos compiler los obtuvimos de ChatGPT):
 
 ```{r echo=TRUE, eval=FALSE}
 cat("Buscando archivos en:", getwd(), "\n")
@@ -103,6 +110,7 @@ nombres_columnas <- c("tripduration", "starttime", "stoptime", "start.station.id
                       "start.station.name", "start.station.latitude", "start.station.longitude",
                       "end.station.id", "end.station.name", "end.station.latitude", 
                       "end.station.longitude", "bikeid", "usertype", "birth.year", "gender")
+
 
 df_combinado <- archivos_csv %>%
   lapply(function(archivo) {
@@ -160,6 +168,7 @@ La importanción y generación del dataset a tratar se ha mostrado en el punto p
 15. **Year of Birth** - Año de nacimiento del usuario.
 
 ### Tratamiento y Limpieza
+
 Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
 
 ```{r importacion_limpieza_tratamiento_1}
@@ -230,23 +239,234 @@ df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS 
 -   Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
 -   Hay que revisar que hay velocidades de tortuga. Quitar outliers?
 
-## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
+# Preguntas grupales
 
--   **¿Cuándo realizo el mantenimiento de las bicicletas?**
+## PRIMERA PREGUNTA GRUPAL:
 
--   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
+-   **¿Cuando realizo el mantenimiento de las bicicletas?**
 
-Explicar las preguntas en este apartado y que queremos resolver.
-
-Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+El análisis a realizar para responder a esta pregunta es identificar los períodos de menor uso de las bicicletas, lo que nos permitirá recomendar los meses y estaciones más adecuados para realizar el mantenimiento sin afectar significativamente la disponibilidad del servicio.
 
 ## Resolución de preguntas
 
-Resolvemos aquí las preguntas etc etc.
+1.  Extraer el mes y la estación del año La columna starttime indica la fecha y hora en que cada viaje comenzó. A partir de ella, extraemos el mes (month) y la estación (season). Las estaciones se definen de acuerdo con la meteorología estándar: · Invierno: Diciembre, Enero, Febrero · Primavera: Marzo, Abril, Mayo · Verano: Junio, Julio, Agosto · Otoño: Septiembre, Octubre, Noviembre
 
-Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+2.  Contar el número de viajes por mes y estación · Agrupar los datos por month y season permite identificar la cantidad total de viajes en cada periodo. · El recuento total de viajes (total_rides) se obtiene con n(), lo que nos dice en qué meses hay menor demanda.
 
-Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
+## Visualizar los resultados
+
+Se usa un gráfico de barras con ggplot2, donde el eje X representa los meses y el eje Y la cantidad de viajes. Los colores indican la estación del año para detectar tendencias estacionales.
+
+## Justificación de este método
+
+-   Evita interrupciones en la demanda: Si realizamos mantenimiento en los meses con menor uso, reducimos el impacto en los usuarios.
+
+-   Aprovecha la estacionalidad: En muchos lugares, la demanda baja en invierno debido al clima, lo que lo hace un momento ideal para mantenimiento.
+
+-   Permite planificación basada en datos: En lugar de hacer mantenimientos arbitrarios, tomamos decisiones respaldadas por datos históricos.
+
+```{r}
+df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)  
+
+df_preprocesado$season <- case_when(
+  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
+  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
+  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
+  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
+  TRUE ~ NA_character_  
+)
+
+df_counts <- df_preprocesado %>% 
+  group_by(month, season) %>% 
+  summarise(total_rides = n(), .groups = 'drop')
+ggplot(df_counts, aes(x = month, y = total_rides, fill = season)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Uso de bicicletas por mes y estación del año",
+       x = "Mes", y = "Número de viajes") +
+  theme_minimal()
+```
+
+```{r}
+df_preprocesado$year <- year(df_preprocesado$starttime)
+df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)
+df_preprocesado %>% count(year)
+df_preprocesado <- df_preprocesado %>% filter(!is.na(year) & year >= 2015 & year <= 2021)
+df_preprocesado %>% count(year)
+
+df_preprocesado$season <- case_when(
+  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
+  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
+  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
+  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
+  TRUE ~ NA_character_  
+)
+
+df_counts_per_year <- df_preprocesado %>% 
+  group_by(year, month, season) %>% 
+  summarise(total_rides = n(), .groups = 'drop')
+
+ggplot(df_counts_per_year, aes(x = month, y = total_rides, fill = season)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~year, scales = "free_y", ncol = 2, strip.position = "top") +  
+  labs(title = "Número de viajes por mes y año (2015-2020)",
+       x = "Mes", y = "Número de viajes") + 
+  ylim(0, 50000) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  
+        strip.text = element_text(size = 14, face = "bold"),  
+        panel.spacing = unit(0.5, "lines"),  
+        strip.placement = "outside")
+  
+```
+
+```{r}
+df_preprocesado$weekday <- wday(df_preprocesado$starttime, label = TRUE, abbr = FALSE, week_start = 1)
+
+df_counts_per_day <- df_preprocesado %>%
+  group_by(weekday) %>%
+  summarise(total_rides = n(), .groups = 'drop')
+
+df_counts_per_day$weekday <- factor(df_counts_per_day$weekday, 
+                                  levels = c("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"))
+
+ggplot(df_counts_per_day, aes(x = weekday, y = total_rides, fill = weekday)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Uso total de bicicletas por día de la semana",
+       x = "Día de la semana", y = "Número de viajes") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#ffff00", "#ff0000", "#00ff00")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+
+```
+
+```{r}
+df_preprocesado$hour <- hour(df_preprocesado$starttime)
+df_preprocesado$time_period <- case_when(
+  df_preprocesado$hour >= 0 & df_preprocesado$hour < 6  ~ "Madrugada",
+  df_preprocesado$hour >= 6 & df_preprocesado$hour < 12 ~ "Mañana",
+  df_preprocesado$hour >= 12 & df_preprocesado$hour < 18 ~ "Tarde",
+  df_preprocesado$hour >= 18 & df_preprocesado$hour < 24 ~ "Noche",
+  TRUE ~ NA_character_
+)
+
+df_counts <- df_preprocesado %>%
+  group_by(season, time_period) %>%
+  summarise(total_rides = n(), .groups = 'drop')
+df_counts
+
+ggplot(df_counts, aes(x = time_period, y = total_rides, fill = season)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Uso de bicicletas por franja horaria y estación del año",
+       x = "Franja horaria", y = "Número de viajes", fill = "Estación") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Invierno" = "#1f77b4", "Primavera" = "#2ca02c", 
+                               "Verano" = "#ff7f0e", "Otoño" = "#d62728"))
+```
+
+```{r}
+df_preprocesado <- df_preprocesado %>%
+  mutate(start_hour = hour(starttime))
+
+hourly_usage <- df_preprocesado %>%
+  group_by(start_hour) %>%
+  summarise(trips = n(), .groups = "drop") %>%
+  arrange(start_hour)
+hourly_usage$start_hour <- factor(hourly_usage$start_hour, levels = 0:23)
+
+
+hourly_usage$color <- case_when(
+  hourly_usage$trips > 150000 ~ "#FF0000",
+  hourly_usage$trips > 100000 ~ "#FFA500",
+  hourly_usage$trips > 50000  ~ "#FFD700",
+  TRUE                        ~ "steelblue"
+)
+
+ggplot(hourly_usage, aes(x = start_hour, y = trips, fill = color)) +
+  geom_col() +
+  scale_fill_identity() +  
+  labs(title = "Cantidad de viajes por hora",
+       x = "Hora del día",
+       y = "Número de viajes") +
+  theme_minimal() +
+  scale_x_discrete(labels = 0:23) +  
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5)) 
+```
+
+```{r}
+station_usage <- df_preprocesado %>%
+  group_by(start.station.id, start.station.name, start.station.latitude, start.station.longitude) %>%
+  summarise(total_starts = n(), .groups = "drop") %>%
+  arrange(desc(total_starts))
+
+quartiles <- quantile(station_usage$total_starts, probs = c(0.25, 0.5, 0.75, 1))
+station_usage$icon_color <- case_when(
+  station_usage$total_starts <= quartiles[1] ~ "blue",
+  station_usage$total_starts <= quartiles[2] ~ "green",
+  station_usage$total_starts <= quartiles[3] ~ "orange",
+  TRUE ~ "red")
+
+bike_icon <- function(color) {
+  awesomeIcons(
+  icon = "bicycle", 
+  library = "fa",  # Esto nos lo ha prporcionado ChatGPT
+  markerColor = color)
+}
+
+l1 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addAwesomeMarkers(
+  lng = ~start.station.longitude,
+  lat = ~start.station.latitude,
+  icon = ~bike_icon(icon_color),
+  label = ~paste0(start.station.name, ": ", total_starts, " viajes")) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
+
+l2 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addCircleMarkers(
+  lng = ~start.station.longitude,
+  lat = ~start.station.latitude,
+  color = ~icon_color,
+  radius = ~sqrt(total_starts) * 0.1,
+  stroke = FALSE,
+  fillOpacity = 0.7,
+  label = ~paste0(start.station.name, ": ", total_starts, " viajes")
+  ) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
+
+l3 <- leaflet(station_usage) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~start.station.longitude,
+    lat = ~start.station.latitude,
+    intensity = ~total_starts,
+    blur = 20,
+    max = 0.1,
+    radius = 15
+  ) %>%
+  addLegend(
+  colors = c("blue", "green", "orange", "red"),
+  labels = c("Q1: Bajo uso", "Q2: Uso moderado", "Q3: Alto uso", "Q4: Uso muy alto"),
+  title = "Uso de estaciones (Cuartiles)",
+  position = "bottomright")
+
+l1
+l2
+l3
+```
+
+## SEGUNDA PREGUNTA GRUPAL:
+
+-   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
 
 ## Conclusiones
 
