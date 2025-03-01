@@ -40,6 +40,7 @@ library(leaflet.extras)
 library(shiny)
 library(shinyWidgets)
 library(networkD3)
+
 ```
 
 # New York City Bike Análisis
@@ -196,7 +197,6 @@ df <- df %>% mutate(gender = recode(gender, `0` = "NO_DEF", `1` = "Masculino", `
 El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
 
 ```{r importacion_limpieza_tratamiento_3}
-
 df <- df %>% mutate(tripduration = tripduration / 60)
 df$starttime <- ymd_hms(df$starttime)
 df$stoptime <- ymd_hms(df$stoptime)
@@ -564,9 +564,10 @@ Tras analizar los mapas (cualquiera de los generados tanto l1, como l2, como l3)
 
     -   Análisis exploratorio inicial:
 
-        -   Antes de aplicar un test estadístico, haríamos un resumen descriptivo, esto nos dará una idea si hay diferencias notables:
+        -   Antes de aplicar un test estadístico, haríamos un resumen descriptivo, esto nos dará una idea si hay diferencias notables.
 
     -   Métricas:
+
 
         -   Frecuencia de uso: Cuántos viajes ha realizado cada bicicleta (count(bikeid)).
         -   Distancia total recorrida: Suma de distance_km por bicicleta.
@@ -796,8 +797,10 @@ shinyApp(ui, server)
 -   Conclusiones:
     -   Con observar la primera gráfica ya puedes ver las rutas más populares, además que la itención de esta pregunta ha sido la de poder representar de varias maneras originales las rutas en bici. Como conclusión adicional puedo añadir que es lógico que las rutas más populares acaben siendo los sitios más céntricos, pues es donde mayor tránsito y donde se encuentran muchos puestos de trabajo posiblemente. Así pues es normal que coincidan tanto ida como vuelta en ciertas estaciones en el top 10 de rutas populares.
 
+
 ## 6.2 José Luis Costela Guijosa
 
 ## 6.3 Marta Reyes López
 
 ## 6.4 Manuel Sánchez Jiménez
+
