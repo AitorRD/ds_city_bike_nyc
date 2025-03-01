@@ -5,6 +5,20 @@ date: "Febrero de 2025"
 output: html_document
 ---
 
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+if (!require("sf")) install.packages("sf")
+if (!require("RColorBrewer")) install.packages("RColorBrewer")
+if (!require("scales")) install.packages("scales")
+
+library(sf)
+library(RColorBrewer)
+library(scales)
+
+```
+
 **NOTA:** Las variables creadas en esta sección empezarán por JLCG para asegurar que no se va a solapar ninguna variable con el análisis del resto de mis compañeros
 
 ## ¿Cuáles son las zonas con mayor concentración de bicicletas en la ciudad y cómo podría esto ayudar a recomendar la instalación de nuevas estaciones?
