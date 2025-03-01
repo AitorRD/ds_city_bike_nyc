@@ -20,6 +20,8 @@ if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("plotly")) install.packages("plotly")
 if (!require("patchwork")) install.packages("patchwork")
 if (!require("prophet")) install.packages("prophet")
+if (!require("hrbrthemes")) install.packages("hrbrthemes")
+if (!require("shiny")) install.packages("shiny")
 
 library(patchwork)
 library(dplyr)
@@ -29,6 +31,8 @@ library(lubridate)
 library(ggplot2)
 library(plotly)
 library(prophet)
+library(hrbrthemes)
+library(shiny)
 ```
 
 # New York City Bike Análisis
@@ -260,68 +264,57 @@ Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coher
 
 ### Manuel Sánchez Jiménez - Pregunta 1 - ¿Como afectó la Pandemia?
 ```{r}
-p1 <- ggplot(df_preprocesado, aes(y = tripduration)) +
-  geom_boxplot(fill="steelblue", outlier.color="red") +
-  labs(title="Boxplot de Duración de Viajes", y="Duración (minutos)") +
-  theme_minimal()
-
-# Dispersión de duración vs distancia
-p2 <- ggplot(df_preprocesado, aes(x = tripduration, y = distance_km)) +
-  geom_point(alpha=0.5, color="blue") +
-  labs(title="Relación entre duración del viaje y distancia",
-       x="Duración (minutos)", y="Distancia (km)") +
-  theme_minimal()
-
-# Transformación logarítmica de duración
-df_preprocesado$tripduration_log <- log1p(df_preprocesado$tripduration)  # log(1 + x) para evitar log(0)
-
-p3 <- ggplot(df_preprocesado, aes(y = tripduration_log)) +
-  geom_boxplot(fill="steelblue", outlier.color="red") +
-  labs(title="Boxplot de Duración (Escala Log)", y="Duración (minutos, log)") +
-  theme_minimal()
-
-# Dispersión de duración logarítmica vs distancia
-p4 <- ggplot(df_preprocesado, aes(x = tripduration_log, y = distance_km)) +
-  geom_point(alpha=0.5, color="blue") +
-  labs(title="Relación entre duración (log) y distancia",
-       x="Duración (minutos, log)", y="Distancia (km)") +
-  theme_minimal()
-
-# Unir los gráficos en una cuadrícula 2x2
-(p1 | p2) / (p3 | p4)
-```
-```{r}
-#Quitar 0 en distancia y velocidad
-df_preprocesado <- df_preprocesado %>% filter(distance_km > 0);
-```
-
-```{r}
-#Quitar outliers
-Q1 <- quantile(df$tripduration, 0.25, na.rm = TRUE)
-Q3 <- quantile(df$tripduration, 0.75, na.rm = TRUE)
+Q1 <- quantile(df_preprocesado$tripduration, 0.25, na.rm = TRUE)
+Q3 <- quantile(df_preprocesado$tripduration, 0.75, na.rm = TRUE)
 IQR <- Q3 - Q1
 
 limite_inferior <- Q1 - 1.5 * IQR
 limite_superior <- Q3 + 1.5 * IQR
 
-df_sin_outliers <- df %>%
-  filter(tripduration >= limite_inferior & tripduration <= limite_superior)
+df_sin_outliers <- df_preprocesado %>%
+  filter(tripduration >= limite_inferior & tripduration <= 75)
+```
 
-# Boxplot de duración de viajes
-p1_no_outliers <- ggplot(df_sin_outliers, aes(y = tripduration)) +
-  geom_boxplot(fill="steelblue", outlier.color="red") +
-  labs(title="Boxplot de Duración de Viajes", y="Duración (minutos)") +
+```{r}
+df_sin_outliers$year <- format(df_sin_outliers$starttime, "%Y")
+df_avg_year <- df_sin_outliers %>%
+  group_by(year) %>%
+  summarise(media_viajes = mean(n()))
+df_avg_year$year <- as.numeric(df_avg_year$year)
+```
+
+```{r}
+df_avg_year %>%
+  ggplot(aes(x = year, y = media_viajes)) +
+  geom_line(color = "#69b3a2", size = 1) +
+  geom_point(color = "#e9ecef", size = 2) + 
+  labs(title = "Tendencia del Número Medio de Viajes (2015-2020)",
+       x = "Año", y = "Número Medio de Viajes") +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(breaks = seq(2015, 2020, by = 1)) +
+  theme_ipsum()
+```
+
+```{r}
+df_sin_outliers$periodo <- case_when(
+  df_sin_outliers$starttime < "2020-03-01" ~ "Pre-pandemia",
+  df_sin_outliers$starttime >= "2020-03-12" ~ "Pandemia"
+)
+
+df_sin_outliers <- df_sin_outliers %>% filter(!is.na(periodo))
+
+p1_graph <- ggplot(df_sin_outliers, aes(x = periodo, y = tripduration, fill = periodo)) +
+  geom_violin(alpha = 0.7, trim = FALSE)
   theme_minimal()
 
-df_sin_outliers$tripduration_log <- log1p(df_sin_outliers$tripduration)  # log(1 + x) para evitar log(0)
+p2_graph <- ggplot(df_sin_outliers, aes(x = periodo, y = tripduration, fill = periodo)) +
+  geom_boxplot() +
+  labs(title="Comparación de duración de viajes en diferentes periodos",
+       x="Periodo", y="Duración") +
+  theme_minimal()  
 
-p3_no_outliers <- ggplot(df_sin_outliers, aes(y = tripduration_log)) +
-  geom_boxplot(fill="steelblue", outlier.color="red") +
-  labs(title="Boxplot de Duración (Escala Log)", y="Duración (minutos, log)") +
-  theme_minimal()
-
-(p1_no_outliers | p3_no_outliers)
-
+p1_graph
+p2_graph
 ```
 
 ```{r}
@@ -335,35 +328,55 @@ df_sin_outliers %>%
   labs(title="Uso de bicicletas por hora antes y durante la pandemia",
        x="Hora del día", y="Número de viajes") +
   theme_minimal()
+
 ```
 
 ```{r}
-df_prophet_no_outliers <- df_sin_outliers %>%
-  group_by(ds = floor_date(as.Date(starttime), "month")) %>%  # Agrupar por semanas
+df_prophet <- df_sin_outliers %>%
+  group_by(ds = floor_date(as.Date(starttime), "week")) %>%  # Agrupar por semanas
   summarise(y = sum(n()))  # Sumar el número de viajes por semana
 
-df_train_no_outliers <- df_prophet_no_outliers %>% filter(ds < "2020-03-01")
-# Crear y entrenar el modelo Prophet
-m_no_outliers <- prophet(df_train_no_outliers, daily.seasonality = TRUE)
+df_train <- df_prophet %>% filter(ds < "2020-03-01")
+m <- prophet(df_train, daily.seasonality = TRUE)
 
-# Crear dataframe con fechas futuras (2 año más)
-future_no_outliers <- make_future_dataframe(m_no_outliers, periods = 2*365, freq = 'day')
+future <- make_future_dataframe(m, periods = 2*365, freq = 'day')
 
-# Generar predicción
-forecast <- predict(m_no_outliers, future_no_outliers)
+forecast <- predict(m, future)
 
-df_compare_no_outliers <- df_prophet_no_outliers %>%
-  left_join(forecast %>% select(ds, yhat), by = "ds")  # 'yhat' es la predicción de Prophet
+df_compare <- df_prophet %>%
+  left_join(forecast %>% select(ds, yhat), by = "ds") 
 
-head(df_compare_no_outliers)
-
-ggplot(df_compare_no_outliers, aes(x = ds)) +
-  geom_line(aes(y = y, color="Real"), size=1) +  # Datos reales
-  geom_line(aes(y = yhat, color="Predicción sin pandemia"), size=1, linetype="dashed") +  # Predicción Prophet
+ggplot(df_compare, aes(x = ds)) +
+  geom_line(aes(y = y, color="Real"), size=1) + 
+  geom_line(aes(y = yhat, color="Predicción sin pandemia"), size=1, linetype="dashed") +
   labs(title="Comparación entre Predicción y Datos Reales",
        x="Fecha", y="Número de viajes") +
-  scale_color_manual(values=c("blue", "red")) +  # Azul para datos reales, rojo para predicción
+  scale_color_manual(values=c("blue", "red")) + 
+  theme_minimal()
+```
+
+```{r}
+df_compare <- df_prophet %>%
+  left_join(forecast %>% select(ds, yhat), by = "ds") %>%
+  filter(!is.na(yhat))  # Eliminar valores NA
+
+grafico1 <- ggplot(df_compare, aes(x = ds)) +
+  geom_line(aes(y = y, color = "Real"), size = 1) + 
+  geom_line(aes(y = yhat, color = "Predicción sin pandemia"), size = 1, linetype = "dashed") +
+  labs(title = "Comparación entre Predicción y Datos Reales",
+       x = "Fecha", y = "Número de viajes") +
+  scale_color_manual(values = c("blue", "red")) + 
   theme_minimal()
 
-````
+df_compare <- df_compare %>%
+  mutate(diferencia = yhat - y) %>%
+  filter(!is.na(diferencia))  # Eliminar valores NA en la diferencia
+
+grafico2 <- ggplot(df_compare, aes(x = ds, y = diferencia)) +
+  geom_col(fill = "red") +
+  labs(title = "Impacto de la Pandemia en el Uso de Bicicletas",
+       x = "Fecha", y = "Viajes perdidos o ganados") +
+  theme_minimal()
+
+(grafico1) / (grafico2)
 ```
