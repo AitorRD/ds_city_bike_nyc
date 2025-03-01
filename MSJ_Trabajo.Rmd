@@ -1,0 +1,354 @@
+---
+title: "Proyecto Data Science - City Bike Dataset"
+author: 
+  - "Costela Guijosa, Jose Luis"
+  - "Reyes López, Marta"
+  - "Rodríguez Dueñas, Aitor"
+  - "Sánchez Jiménez, Manuel"
+date: "Febrero de 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("readr")) install.packages("readr")
+if (!require("geosphere")) install.packages("geosphere")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("plotly")) install.packages("plotly")
+if (!require("patchwork")) install.packages("patchwork")
+if (!require("prophet")) install.packages("prophet")
+if (!require("hrbrthemes")) install.packages("hrbrthemes")
+if (!require("shiny")) install.packages("shiny")
+if (!require("leaflet")) install.packages("leaflet")
+if (!require("tidygeocoder")) install.packages("tidygeocoder")
+if (!require("leaflet.extras")) install.packages("leaflet.extras")
+if (!require("tidyr")) install.packages("tidyr")
+if (!require("leafsync")) install.packages("leafsync")
+
+library(patchwork)
+library(dplyr)
+library(readr)
+library(geosphere)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(prophet)
+library(hrbrthemes)
+library(shiny)
+library(leaflet)
+library(tidygeocoder)
+library(leaflet.extras)
+library(tidyr)
+library(leafsync)  
+```
+
+# New York City Bike Análisis
+
+## Introducción
+
+Este proyecto ha sido realizado por el Equipo 2. La comunicación entre los miembros del grupo se ha llevado a cabo a través de reuniones y mensajes en Discord. La gestión del proyecto se ha realizado mediante un repositorio en GitHub. Se eligió R como lenguaje de programación, ya que consideramos que se alineaba mejor con la asignatura, dado que todos los conocimientos técnicos impartidos han sido en este lenguaje.
+
+## Descripción del Dominio
+
+El proyecto se centra en el análisis de datos de **Citi Bike**, un sistema de bicicletas compartidas en la ciudad de Nueva York. Citi Bike permite a los usuarios alquilar bicicletas en diferentes estaciones distribuidas por la ciudad. Más información sobre el servicio está disponible en su página web oficial: [Citi Bike NYC](https://citibikenyc.com/homepage).
+
+El estudio de los datos de Citi Bike es relevante porque refleja **patrones de movilidad urbana** en una de las ciudades más transitadas del mundo. Como **estudiantes de Data Science**, este análisis nos permite aplicar técnicas de **procesamiento, limpieza y modelado de datos** a un caso real con un gran impacto en la planificación urbana y la sostenibilidad.
+
+Además, el sector de la **micromovilidad** está en crecimiento, y comprender el comportamiento de los usuarios puede aportar **insights valiosos** para mejorar la eficiencia del sistema y fomentar el uso del **transporte sostenible** en otras ciudades.
+
+## Descripción del Dataset
+
+Los datos provienen del sistema de información de Citi Bike, disponible en este [enlace](https://citibikenyc.com/system-data). Como se menciona en la web, el número y tipo de variables han cambiado a lo largo del tiempo, en particular en enero de 2021 (no incluido en nuestro análisis). Además, a partir de septiembre de 2015 (incluido), los datos se encuentran en formato CSV, como se puede observar en este [índice](https://s3.amazonaws.com/tripdata/index.html) de datos en crudo. Por lo tanto, se ha decidido que el rango de análisis abarque desde septiembre de 2015 hasta enero de 2021.
+
+Los datos están organizados por meses y comprimidos en archivos ZIP. La estrategia inicial para importar y procesar esta información fue descomprimir y combinar todos los datos en orden cronológico. Sin embargo, surgió un primer obstáculo: a partir de algunos meses de 2017 y/o 2018, los nombres de las columnas cambiaron (aunque el formato era el mismo, había diferencias en mayúsculas y minúsculas, por ejemplo). Al unificar los datos, algunos tipos de datos no coincidían y se generaban duplicaciones de variables.
+
+Para solucionar este problema, se decidió **unificar los nombres de todas las columnas en minúsculas**. Una vez normalizados los datos, se organizó cada año en archivos CSV individuales y se almacenaron en una carpeta denominada `"combined"`, donde se prepararon para su procesamiento final. Para poder gestionar archivos de gran tamaño en GitHub, se utilizó **Git Large File Storage (Git LFS)**.
+
+Este fue el código usado para compilar cada mes de cada año:
+
+```{r echo=TRUE, eval=FALSE}
+cat("Buscando archivos en:", getwd(), "\n")
+archivos_csv <- list.files(path = getwd(), pattern = "(?i)\.csv$", full.names = TRUE)
+cat("Archivos encontrados:\n")
+print(archivos_csv)
+
+# Verificar si hay archivos CSV en la carpeta
+if (length(archivos_csv) == 0) {
+  stop("No se encontraron archivos CSV en la carpeta. Verifica la ruta o la extensión de los archivos.")
+}
+
+# Función para renombrar columnas
+renombrar_columnas <- function(df) {
+  colnames(df) <- c("tripduration", "starttime", "stoptime", "start.station.id",
+                    "start.station.name", "start.station.latitude", "start.station.longitude",
+                    "end.station.id", "end.station.name", "end.station.latitude", "end.station.longitude",
+                    "bikeid", "usertype", "birth.year", "gender")
+  return(df)
+}
+
+# Leer y combinar todos los archivos CSV
+cat("Procesando archivos...\n")
+df_combinado <- archivos_csv %>%
+  lapply(function(archivo) {
+    cat("Procesando:", archivo, "\n")
+    df <- read_csv(archivo)
+    renombrar_columnas(df)
+  }) %>%
+  bind_rows() %>%
+  mutate(birth.year = as.numeric(birth.year))
+
+# Obtener el año de los archivos y construir el nombre de salida
+nombres_archivos <- basename(archivos_csv)
+años_detectados <- unique(gsub(".*(\\d{4}).csv$", "\\1", nombres_archivos))
+nombre_salida <- paste0("citibike_tripdata_combinado_", paste(años_detectados, collapse = "_"), ".csv")
+
+# Guardar el dataset combinado
+write_csv(df_combinado, nombre_salida)
+cat("Proceso completado. Archivo guardado en", nombre_salida, "\n")
+
+```
+
+Este fragmento para combinarlos y crear el dataset desde el que partimos el proyecto:
+
+```{r echo=TRUE, eval=FALSE}
+archivos_csv <- list.files(path = "data/combined", pattern = "(?i)\\.csv$", full.names = TRUE)
+nombres_columnas <- c("tripduration", "starttime", "stoptime", "start.station.id",
+                      "start.station.name", "start.station.latitude", "start.station.longitude",
+                      "end.station.id", "end.station.name", "end.station.latitude", 
+                      "end.station.longitude", "bikeid", "usertype", "birth.year", "gender")
+
+df_combinado <- archivos_csv %>%
+  lapply(function(archivo) {
+    cat("Procesando:", archivo, "\n")
+    df_col <- read_csv(archivo, show_col_types = FALSE)
+    colnames(df_col) <- nombres_columnas
+    return(df_col)
+  }) %>%
+  bind_rows()
+
+write_csv(df_combinado, "data/bike_data.csv")
+```
+
+El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguientes características:
+
+-   **Tamaño del dataset:** 271 MB.\
+-   **Número de filas y columnas:** 1.702.660 filas y 15 columnas.
+
+## Importación, limpieza y tratamiento
+
+La importanción y generación del dataset a tratar se ha mostrado en el punto previo, a continuación se mostrarán los detalles, la limpieza y el tratamiento del mismo.
+
+### Descripción de las Variables del Dataset
+
+1.  **Trip Duration (seconds)**
+    -   Duración total del viaje en segundos.
+2.  **Start Time and Date**
+    -   Fecha y hora de inicio del viaje.
+3.  **Stop Time and Date**
+    -   Fecha y hora de finalización del viaje.
+4.  **Start Station ID**
+    -   Identificador único de la estación de inicio.
+5.  **Start Station Name**: - Nombre de la estación de inicio.
+6.  **Start Station Latitude**:\
+    -   Latitud de la estación de inicio.
+7.  **Start Station Longitude**: - Longitud de la estación de inicio.
+8.  **End Station ID**
+    -   Identificador único de la estación de destino.
+9.  **End Station Name**
+    -   Nombre de la estación de destino.
+10. **End Station Latitude**
+    -   Latitud de la estación de destino.
+11. **End Station Longitude**
+    -   Longitud de la estación de destino.
+12. **Bike ID**
+    -   Identificador único de la bicicleta utilizada en el viaje.
+13. **User Type**
+    -   Tipo de usuario:
+        -   **Customer**: Usuario con pase de 24 horas o 3 días.
+        -   **Subscriber**: Miembro anual del servicio.
+14. **Gender** - Género del usuario:
+    -   **0** = No disponible
+    -   **1** = Hombre
+    -   **2** = Mujer
+15. **Year of Birth** - Año de nacimiento del usuario.
+
+### Tratamiento y Limpieza
+Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
+
+```{r importacion_limpieza_tratamiento_1}
+df <- read.csv("data/bike_data.csv", stringsAsFactors = FALSE)
+df %>% summarise_all(~ sum(is.na(.)))
+
+```
+
+Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico. Además, en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha decidido asignar la cadena de caracteres 'NO_DEF' en aquellos registros donde el valor sea NA. Esta estrategia permite diferenciar explícitamente los datos faltantes sin afectar la estructura del conjunto de datos, facilitando su manejo en etapas posteriores del análisis.
+
+```{r importacion_limpieza_tratamiento_2}
+
+df <- df %>% mutate(usertype = ifelse(is.na(usertype), "Customer", usertype))
+df <- df %>% mutate(birth.year = ifelse(is.na(birth.year), "NO_DEF", birth.year))
+
+```
+
+El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
+
+```{r importacion_limpieza_tratamiento_3}
+
+df <- df %>% mutate(tripduration = tripduration / 60)
+df$starttime <- ymd_hms(df$starttime)
+df$stoptime <- ymd_hms(df$stoptime)
+
+```
+
+A continuación, se calculará la distancia recorrida entre las estaciones de inicio y fin utilizando la librería geosphere. Esta librería permite calcular la distancia entre dos puntos geográficos a partir de sus coordenadas de latitud y longitud.
+
+```{r importacion_limpieza_tratamiento_4}
+
+df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")], 
+                                df[, c("end.station.longitude", "end.station.latitude")]) / 1000
+df <- df %>% mutate(speed = (distance_km / tripduration)*60)
+```
+
+Por último, se ha detectado la presencia de ciertos registros en los que los valores de latitud y longitud son iguales a 0 para algunas estaciones de final del recorrido. Se ha procedido a identificar cuáles son las estaciones afectadas, con el fin de evaluar el impacto de estos datos atípicos en el análisis y determinar las acciones correctivas pertinentes.
+
+```{r importacion_limpieza_tratamiento_5}
+
+df_latlong0 <- df %>% filter(end.station.latitude == 0 | end.station.longitude == 0)
+
+df_latlong0 %>% 
+  count(end.station.name) %>%
+  arrange(desc(n))
+
+```
+
+Se ha identificado que las siguientes estaciones presentan valores de latitud y longitud iguales a cero:
+
+-   "Indiana"
+-   "JSQ Don't Use"
+-   "WS Don't Use"
+-   "Liberty State Park"
+
+Ante esta situación, se han definido dos estrategias de tratamiento. - Se ha decidido eliminar las estaciones "JSQ Don't Use" y "WS Don't Use", ya que se intuye que corresponden a estaciones que se encuentran en deshuso o no son válidas en la actualidad. Además, tienen como valores de 0 para sus longitudes y latitudes respectivamente. - Se procederá a verificar si existen registros válidos para las estaciones 'Indiana' y 'Liberty State Park', con el objetivo de copiar sus valores correctos de latitud y longitud en aquellas instancias donde actualmente aparecen como cero. En caso de no encontrar ninguna instancia válida, se optará por eliminar estos registros, dado que representan un número reducido de casos, específicamente tres entre ambas estaciones.
+
+```{r importacion_limpieza_tratamiento_6}
+
+df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Park")) # Se observa que en df_Ind_LSP no hay más instancias válidas, por lo que se procede a eliminar estas también
+
+df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
+```
+
+# TODO:
+
+-   Poner los cambios explicitos en modo tabla o como sea.
+-   Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
+-   Hay que revisar que hay velocidades de tortuga. Quitar outliers?
+
+## Preguntas a resolver (cambiar nombre del apartado??) (Poner este apartado al principio?)
+
+-   **¿Cuándo realizo el mantenimiento de las bicicletas?**
+
+-   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
+
+Explicar las preguntas en este apartado y que queremos resolver.
+
+Siguiendo rúbrica: - ¿Es una pregunta que se me hubiera planteado al conocer el dominio? - ¿Es representativo el dataset para poder abordar esas preguntas?, ¿tiene sentido esa pregunta con esos datos? - ¿Tendría algún tipo de utilidad el resultado de la respuesta en la realidad?
+
+## Resolución de preguntas
+
+Resolvemos aquí las preguntas etc etc.
+
+Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+
+Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
+
+## Conclusiones
+
+Indicar resultados y conclusiones a las preguntas.
+
+Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+
+## Preguntas Individuales
+
+### Manuel Sánchez Jiménez - Pregunta 2 - ¿Se pueden encontrar zonas de trabajo?
+
+```{r}
+df_preprocesado %>%
+  filter(starttime >= "2015-09-01" & starttime <= "2019-12-31")
+```
+
+```{r}
+Q1 <- quantile(df_preprocesado$tripduration, 0.25, na.rm = TRUE)
+Q3 <- quantile(df_preprocesado$tripduration, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+limite_inferior <- Q1 - 1.5 * IQR
+limite_superior <- Q3 + 1.5 * IQR
+
+df_sin_outliers <- df_preprocesado %>%
+  filter(tripduration >= limite_inferior & tripduration <= 75)
+```
+
+```{r}
+
+df_sin_outliers <- df_sin_outliers %>%
+  mutate(birth.year = as.numeric(birth.year)) %>%
+  drop_na(birth.year)
+
+df_filtrado <- df_sin_outliers %>%
+  filter((2019 - birth.year) >= 16 & (2019 - birth.year) <= 68 & usertype == "Subscriber")
+
+```
+
+```{r}
+df_morning <- df_filtrado %>%
+  filter(hour(stoptime) >= 7 & hour(stoptime) <= 9) %>%  # Hora en el rango
+  filter(!(hour(stoptime) == 9 & minute(stoptime) > 30))  # Excluir después de 09:30
+
+df_evening <- df_filtrado %>%
+  filter(hour(starttime) >= 17 & hour(starttime) <= 19) %>%  # Hora en el rango
+  filter(!(hour(starttime) == 19 & minute(starttime) > 30))  # Excluir después de 19:30
+
+# Verificar tamaño de los datasets
+nrow(df_morning)
+nrow(df_evening)
+```
+
+```{r}
+df_morning <- df_morning %>%
+  reverse_geocode(lat = end.station.latitude, long = end.station.longitude, method = "osm", full_results = TRUE)
+
+head(df_morning %>% select(end.station.latitude, end.station.longitude, address))
+
+map_morning <- leaflet(df_morning) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = mean(df_morning$end.station.longitude),  # Centra en la media de las longitudes
+          lat = mean(df_morning$end.station.latitude),   # Centra en la media de las latitudes
+          zoom = 13) %>%  # Ajusta el nivel de zoom (más alto = más zoom)
+  addHeatmap(lng = ~end.station.longitude, lat = ~end.station.latitude,
+             blur = 15, max = 0.1, radius = 20) %>%
+addLegend(position = "bottomright", colors = "blue", labels = "Destinos Matutinos")
+```
+
+```{r}
+df_evening <- df_evening %>%
+  reverse_geocode(lat = start.station.latitude, long = start.station.longitude, method = "osm", full_results = TRUE)
+
+head(df_evening %>% select(start.station.latitude, start.station.longitude, address))
+
+map_evening <- leaflet(df_evening) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = mean(df_evening$start.station.longitude),  # Centra en la media de las longitudes
+          lat = mean(df_evening$start.station.latitude),   # Centra en la media de las latitudes
+          zoom = 13) %>%  # Ajusta el nivel de zoom (más alto = más zoom)
+  addHeatmap(lng = ~start.station.longitude, lat = ~start.station.latitude,
+             blur = 15, max = 0.1, radius = 20) %>%
+addLegend(position = "bottomright", colors = "red", labels = "Destinos Vespertinos")
+
+```
+
+```{r}
+sync(map_morning, map_evening)
+```
