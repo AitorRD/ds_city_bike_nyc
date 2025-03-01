@@ -1,5 +1,5 @@
 ---
-title: "Proyecto Data Science - City Bike Dataset"
+title: "New York City Bike Análisis"
 author: 
   - "Costela Guijosa, Jose Luis"
   - "Reyes López, Marta"
@@ -7,6 +7,7 @@ author:
   - "Sánchez Jiménez, Manuel"
 date: "Febrero de 2025"
 output: html_document
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +23,9 @@ if (!require("plotly")) install.packages("plotly")
 if (!require("patchwork")) install.packages("patchwork")
 if (!require("leaflet")) install.packages("leaflet")
 if (!require("leaflet.extras")) install.packages("leaflet.extras")
-
+if (!require("shiny")) install.packages("shiny")
+if (!require("shinyWidgets")) install.packages("shinyWidgets")
+if (!require("networkD3")) install.packages("networkD3")
 
 library(tidyr)
 library(dplyr)
@@ -34,15 +37,19 @@ library(plotly)
 library(patchwork)
 library(leaflet)
 library(leaflet.extras)
+library(shiny)
+library(shinyWidgets)
+library(networkD3)
+
 ```
 
 # New York City Bike Análisis
 
-## Introducción
+## 1. Introducción
 
 Este proyecto ha sido realizado por el Equipo 2. La comunicación entre los miembros del grupo se ha llevado a cabo a través de reuniones y mensajes en Discord. La gestión del proyecto se ha realizado mediante un repositorio en GitHub. Se eligió R como lenguaje de programación, ya que consideramos que se alineaba mejor con la asignatura, dado que todos los conocimientos técnicos impartidos han sido en este lenguaje.
 
-## Descripción del Dominio
+## 2. Descripción del Dominio
 
 El proyecto se centra en el análisis de datos de **Citi Bike**, un sistema de bicicletas compartidas en la ciudad de Nueva York. Citi Bike permite a los usuarios alquilar bicicletas en diferentes estaciones distribuidas por la ciudad. Más información sobre el servicio está disponible en su página web oficial: [Citi Bike NYC](https://citibikenyc.com/homepage).
 
@@ -50,7 +57,7 @@ El estudio de los datos de Citi Bike es relevante porque refleja **patrones de m
 
 Además, el sector de la **micromovilidad** está en crecimiento, y comprender el comportamiento de los usuarios puede aportar **insights valiosos** para mejorar la eficiencia del sistema y fomentar el uso del **transporte sostenible** en otras ciudades.
 
-## Descripción del Dataset
+## 3. Descripción del Dataset
 
 Los datos provienen del sistema de información de Citi Bike, disponible en este [enlace](https://citibikenyc.com/system-data). Como se menciona en la web, el número y tipo de variables han cambiado a lo largo del tiempo, en particular en enero de 2021 (no incluido en nuestro análisis). Además, a partir de septiembre de 2015 (incluido), los datos se encuentran en formato CSV, como se puede observar en este [índice](https://s3.amazonaws.com/tripdata/index.html) de datos en crudo. Por lo tanto, se ha decidido que el rango de análisis abarque desde septiembre de 2015 hasta enero de 2021.
 
@@ -129,11 +136,11 @@ El dataset final resultante se denomina **`bike_data.csv`** y tiene las siguient
 -   **Tamaño del dataset:** 271 MB.\
 -   **Número de filas y columnas:** 1.702.660 filas y 15 columnas.
 
-## Importación, limpieza y tratamiento
+## 4. Importación, limpieza y tratamiento
 
 La importanción y generación del dataset a tratar se ha mostrado en el punto previo, a continuación se mostrarán los detalles, la limpieza y el tratamiento del mismo.
 
-### Descripción de las Variables del Dataset
+### 4.1. Descripción de las Variables del Dataset
 
 1.  **Trip Duration (seconds)**
     -   Duración total del viaje en segundos.
@@ -167,7 +174,7 @@ La importanción y generación del dataset a tratar se ha mostrado en el punto p
     -   **2** = Mujer
 15. **Year of Birth** - Año de nacimiento del usuario.
 
-### Tratamiento y Limpieza
+### 4.2. Tratamiento y Limpieza
 
 Como primer paso en el proceso de preprocesamiento, se ha llevado a cabo un análisis preliminar para identificar la presencia de valores faltantes (NA) en el conjunto de datos permitiendo evaluar la calidad de los datos.
 
@@ -177,19 +184,19 @@ df %>% summarise_all(~ sum(is.na(.)))
 
 ```
 
-Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico. Además, en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha decidido asignar la cadena de caracteres 'NO_DEF' en aquellos registros donde el valor sea NA. Esta estrategia permite diferenciar explícitamente los datos faltantes sin afectar la estructura del conjunto de datos, facilitando su manejo en etapas posteriores del análisis.
+Se ha identificado la presencia de 497 valores faltantes en la columna correspondiente al tipo de usuario (usertype). Para su tratamiento, se ha decidido asignarles la categoría 'Customer', bajo la suposición de que la ausencia de este dato sugiere que el usuario no está registrado y, por lo tanto, es un usuario esporádico. Además, preferimos tratar directamente con la edad del usuario mejor que con el año de nacimiento resulta más cómodo para el análisis a nuestro parecer, así pues en la columna correspondiente al año de nacimiento (birth.year), se ha detectado un total de 44,242 valores faltantes o nulos. Para su tratamiento, se ha calculado la edad (age) y luego en los valores vacíos se ha decidido ignorarlos ya que posiblemente sean Customer que no han puesto su edad o no se ha registrado correctamente. Adicionalmente hemos cambiado el formato del género a string siguiendo lo que pone en la propia web donde 0 = no definido, 1 = masculino y 2 = femenino.
 
 ```{r importacion_limpieza_tratamiento_2}
 
 df <- df %>% mutate(usertype = ifelse(is.na(usertype), "Customer", usertype))
-df <- df %>% mutate(birth.year = ifelse(is.na(birth.year), "NO_DEF", birth.year))
+df <- df %>% mutate(age = ifelse(!is.na(birth.year), as.numeric(format(Sys.Date(), "%Y")) - birth.year, NA))
+df <- df %>% mutate(gender = recode(gender, `0` = "NO_DEF", `1` = "Masculino", `2` = "Femenino"))
 
 ```
 
 El siguiente paso en el preprocesamiento ha sido ajustar la escala de la duración del viaje, convirtiendo el tiempo de tripduration de segundos a minutos, dado que esta unidad resulta más adecuada para el análisis. Adicionalmente, se ha modificado el tipo de dato de los atributos starttime y stoptime, que originalmente estaban en formato de texto, convirtiéndolos a un tipo de dato de fecha mediante la librería lubridate. Este cambio facilita el manejo y análisis de los datos temporales, permitiendo realizar cálculos y agrupaciones con mayor precisión.
 
 ```{r importacion_limpieza_tratamiento_3}
-
 df <- df %>% mutate(tripduration = tripduration / 60)
 df$starttime <- ymd_hms(df$starttime)
 df$stoptime <- ymd_hms(df$stoptime)
@@ -233,75 +240,130 @@ df_Ind_LSP <- df %>% filter(end.station.name %in% c("Indiana", "Liberty State Pa
 df_preprocesado <- df %>% filter(!(end.station.name %in% c("JSQ Don't Use", "WS Don't Use", "Indiana", "Liberty State Park")))
 ```
 
-# TODO:
+### 4.3. Descripción de las Variables del Dataset tras el Procesado:
 
--   Poner los cambios explicitos en modo tabla o como sea.
--   Hay que analizar que hay rutas que cogen la bici y la dejan en el mismo punto
--   Hay que revisar que hay velocidades de tortuga. Quitar outliers?
+El dataframe tras el procesado tiene: - **Número de filas y columnas:** 1.701.873 filas y 18 columnas.
 
-# Preguntas grupales
+1.  **Trip Duration**
+    -   Duración total del viaje en minutos - Clase: Numeric.
+2.  **Start Time and Date**
+    -   Fecha y hora de inicio del viaje - Clase: Timestamp.
+3.  **Stop Time and Date**
+    -   Fecha y hora de finalización del viaje - Clase: Timestamp.
+4.  **Start Station ID**
+    -   Identificador único de la estación de inicio - Clase: Numeric.
+5.  **Start Station Name**:
+    -   Nombre de la estación de inicio - Clase: Character.
+6.  **Start Station Latitude**:
+    -   Latitud de la estación de inicio - Clase: Numeric.
+7.  **Start Station Longitude**:
+    -   Longitud de la estación de inicio - Clase: Numeric.
+8.  **End Station ID**
+    -   Identificador único de la estación de destino - Clase: Numeric.
+9.  **End Station Name**
+    -   Nombre de la estación de destino - Clase: Character.
+10. **End Station Latitude**
+    -   Latitud de la estación de destino - Clase: Numeric.
+11. **End Station Longitude**
+    -   Longitud de la estación de destino - Clase: Numeric.
+12. **Bike ID**
+    -   Identificador único de la bicicleta utilizada en el viaje - Clase: Numeric.
+13. **User Type**
+    -   Tipo de usuario - Clase Character:
+        -   **Customer**: Usuario con pase de 24 horas o 3 días.
+        -   **Subscriber**: Miembro anual del servicio.
+14. **Gender**
+    -   Género del usuario - Clase Character:
+        -   **NO_DEF**
+        -   **Masculino**
+        -   **Femenino**
+15. **Year of Birth**
+    -   Año de nacimiento del usuario - Clase : Numeric.
+16. **Age**
+    -   Edad del usuario - Clase : Numeric.
+17. **Distance km**
+    -   Distancia reocrrida del viaje - Clase : Numeric.
+18. **Speed**
+    -   Velocidad media en km/h del viaje - Clase : Numeric.
 
-## PRIMERA PREGUNTA GRUPAL:
+# 5. Preguntas grupales
+
+## 5.1. PRIMERA PREGUNTA GRUPAL:
 
 -   **¿Cuando realizo el mantenimiento de las bicicletas?**
 
-El análisis a realizar para responder a esta pregunta es identificar los períodos de menor uso de las bicicletas, lo que nos permitirá recomendar los meses y estaciones más adecuados para realizar el mantenimiento sin afectar significativamente la disponibilidad del servicio.
+El análisis a realizar para responder a esta pregunta es identificar los períodos de menor uso de las bicicletas haciendo foco en como varía la demanda a lo largo del tiempo y considerando la distribución del uso en las distintas estaciones de la ciudad. Esto nos permitirá recomendar momentos y ubicaciones más adecuados para realizar el mantenimiento sin afectar significativamente la disponibilidad del servicio.
 
-## Resolución de preguntas
+### 5.1.2. Justificación del método
 
-1.  Extraer el mes y la estación del año La columna starttime indica la fecha y hora en que cada viaje comenzó. A partir de ella, extraemos el mes (month) y la estación (season). Las estaciones se definen de acuerdo con la meteorología estándar: · Invierno: Diciembre, Enero, Febrero · Primavera: Marzo, Abril, Mayo · Verano: Junio, Julio, Agosto · Otoño: Septiembre, Octubre, Noviembre
+Para asegurar un análisis completo y organizado del uso de las bicicletas, se ha utilizado un método que va de lo general a lo específico, permitiendo así una comprensión gradual de los patrones de demanda.
 
-2.  Contar el número de viajes por mes y estación · Agrupar los datos por month y season permite identificar la cantidad total de viajes en cada periodo. · El recuento total de viajes (total_rides) se obtiene con n(), lo que nos dice en qué meses hay menor demanda.
+En primer lugar, se ha examinado la utilización de las bicicletas a nivel estacional, ya que factores climáticos y estacionales pueden impactar significativamente en la demanda. Luego, se ha desglosado el análisis por meses, lo que permite identificar cambios más detallados dentro de cada estación y posibles variaciones anuales.
 
-## Visualizar los resultados
+Después, se ha evaluado el uso según los días de la semana y las franjas horarias, con el fin de detectar diferencias en la demanda entre días laborables y fines de semana, así como entre distintos momentos del día, como horas punta o períodos de menor afluencia.
 
-Se usa un gráfico de barras con ggplot2, donde el eje X representa los meses y el eje Y la cantidad de viajes. Los colores indican la estación del año para detectar tendencias estacionales.
+Por último, se ha realizado un análisis espacial a través de un mapa de uso por estación, lo que permite identificar áreas con menor actividad y mejorar la planificación del mantenimiento sin afectar la disponibilidad del servicio.
 
-## Justificación de este método
+Este enfoque gradual asegura una visión completa del comportamiento de la demanda y ayuda en la toma de decisiones bien fundamentadas para optimizar la gestión del sistema de bicicletas compartidas.
 
--   Evita interrupciones en la demanda: Si realizamos mantenimiento en los meses con menor uso, reducimos el impacto en los usuarios.
+### 5.1.3. Técnica de resolución
 
--   Aprovecha la estacionalidad: En muchos lugares, la demanda baja en invierno debido al clima, lo que lo hace un momento ideal para mantenimiento.
+Extraer el mes y la estación del año La columna starttime indica la fecha y hora en que cada viaje comenzó. A partir de ella, extraemos el mes (month) y la estación (season). Las estaciones se definen de acuerdo con la meteorología estándar:
 
--   Permite planificación basada en datos: En lugar de hacer mantenimientos arbitrarios, tomamos decisiones respaldadas por datos históricos.
+-   Invierno: Diciembre, Enero, Febrero
 
-```{r}
-df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)  
+-   Primavera: Marzo, Abril, Mayo
 
-df_preprocesado$season <- case_when(
-  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
-  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
-  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
-  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
+-   Verano: Junio, Julio, Agosto
+
+-   Otoño: Septiembre, Octubre, Noviembre
+
+Se cuenta el número de viajes por mes y estación del año usando los datos de month y season para poder identificar la cantidad total de viajes en cada periodo. Con este recuento se define en una variable llamada total_rides para posteriormente sacar un histograma.
+
+```{r mantenimiento_viajes_globales}
+df_mantenimiento <- df_preprocesado
+df_mantenimiento$month <- month(df_mantenimiento$starttime, label = TRUE, abbr = TRUE)  
+df_mantenimiento$year <- year(df_mantenimiento$starttime)
+df_mantenimiento <- df_mantenimiento %>% filter(!is.na(year) & year >= 2015 & year <= 2021)
+df_mantenimiento$weekday <- wday(df_mantenimiento$starttime, label = TRUE, abbr = FALSE, week_start = 1)
+df_mantenimiento$hour <- hour(df_mantenimiento$starttime)
+
+df_mantenimiento$season <- case_when(
+  df_mantenimiento$month %in% c("dic", "ene", "feb") ~ "Invierno",
+  df_mantenimiento$month %in% c("mar", "abr", "may") ~ "Primavera",
+  df_mantenimiento$month %in% c("jun", "jul", "ago") ~ "Verano",
+  df_mantenimiento$month %in% c("sep", "oct", "nov") ~ "Otoño",
   TRUE ~ NA_character_  
 )
 
-df_counts <- df_preprocesado %>% 
+df_mantenimiento$time_period <- case_when(
+  df_mantenimiento$hour >= 0 & df_mantenimiento$hour < 6  ~ "Madrugada",
+  df_mantenimiento$hour >= 6 & df_mantenimiento$hour < 12 ~ "Mañana",
+  df_mantenimiento$hour >= 12 & df_mantenimiento$hour < 18 ~ "Tarde",
+  df_mantenimiento$hour >= 18 & df_mantenimiento$hour < 24 ~ "Noche",
+  TRUE ~ NA_character_
+)
+
+df_mantenimiento <- df_mantenimiento %>% mutate(start_hour = hour(starttime))
+
+
+df_mantenimiento_global <- df_mantenimiento %>% 
   group_by(month, season) %>% 
   summarise(total_rides = n(), .groups = 'drop')
-ggplot(df_counts, aes(x = month, y = total_rides, fill = season)) +
+
+ggplot(df_mantenimiento_global, aes(x = month, y = total_rides, fill = season)) +
   geom_bar(stat = "identity") +
   labs(title = "Uso de bicicletas por mes y estación del año",
-       x = "Mes", y = "Número de viajes") +
+       x = "Mes", y = "Número de viajes", fill= "Estación del año") +
   theme_minimal()
 ```
 
-```{r}
-df_preprocesado$year <- year(df_preprocesado$starttime)
-df_preprocesado$month <- month(df_preprocesado$starttime, label = TRUE, abbr = TRUE)
-df_preprocesado %>% count(year)
-df_preprocesado <- df_preprocesado %>% filter(!is.na(year) & year >= 2015 & year <= 2021)
-df_preprocesado %>% count(year)
+También se ha realizado el mismo análisis, pero separando por año. De esta manera podemos ver la evolución del uso de las bicicletas a lo largo de meses de los distintos años a evaluar y así poder comparar y sacar una conclusión más precisa sobre las tendencias de demanda y posibles cambios en los patrones de uso.
 
-df_preprocesado$season <- case_when(
-  df_preprocesado$month %in% c("dic", "ene", "feb") ~ "Invierno",
-  df_preprocesado$month %in% c("mar", "abr", "may") ~ "Primavera",
-  df_preprocesado$month %in% c("jun", "jul", "ago") ~ "Verano",
-  df_preprocesado$month %in% c("sep", "oct", "nov") ~ "Otoño",
-  TRUE ~ NA_character_  
-)
+Para este análisis se ha tomado el año y el mes de columna startime y de la misma forma que en el anterior análisis se ha extraído las estaciones del año. Se hace un recuento por año de los usos según estación del año y mes y con este se genera un histograma.
 
-df_counts_per_year <- df_preprocesado %>% 
+```{r mantenimiento_por_anio}
+df_counts_per_year <- df_mantenimiento %>% 
   group_by(year, month, season) %>% 
   summarise(total_rides = n(), .groups = 'drop')
 
@@ -309,7 +371,7 @@ ggplot(df_counts_per_year, aes(x = month, y = total_rides, fill = season)) +
   geom_bar(stat = "identity") +
   facet_wrap(~year, scales = "free_y", ncol = 2, strip.position = "top") +  
   labs(title = "Número de viajes por mes y año (2015-2020)",
-       x = "Mes", y = "Número de viajes") + 
+       x = "Mes", y = "Número de viajes", fill= "Estación del año") + 
   ylim(0, 50000) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  
@@ -319,10 +381,12 @@ ggplot(df_counts_per_year, aes(x = month, y = total_rides, fill = season)) +
   
 ```
 
-```{r}
-df_preprocesado$weekday <- wday(df_preprocesado$starttime, label = TRUE, abbr = FALSE, week_start = 1)
+### 5.1.4. Técnica de resolución
 
-df_counts_per_day <- df_preprocesado %>%
+Extraer los días de la semana. Mediante la columna startime que contiene la fecha podemos calcular el día de la semana teniendo el mes y año creando la columna weekday. Con esta nueva columna se saca el recuento de uso de bicicletas por días de la semana y como anteriormente se genera un histograma para ilustrar los resultados.
+
+```{r mantenimiento_por_weekday}
+df_counts_per_day <- df_mantenimiento %>%
   group_by(weekday) %>%
   summarise(total_rides = n(), .groups = 'drop')
 
@@ -332,7 +396,7 @@ df_counts_per_day$weekday <- factor(df_counts_per_day$weekday,
 ggplot(df_counts_per_day, aes(x = weekday, y = total_rides, fill = weekday)) +
   geom_bar(stat = "identity") +
   labs(title = "Uso total de bicicletas por día de la semana",
-       x = "Día de la semana", y = "Número de viajes") +
+       x = "Día de la semana", y = "Número de viajes", fill= "Día de la semana") +
   theme_minimal() +
   scale_fill_manual(values = c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#ffff00", "#ff0000", "#00ff00")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
@@ -340,35 +404,38 @@ ggplot(df_counts_per_day, aes(x = weekday, y = total_rides, fill = weekday)) +
 
 ```
 
-```{r}
-df_preprocesado$hour <- hour(df_preprocesado$starttime)
-df_preprocesado$time_period <- case_when(
-  df_preprocesado$hour >= 0 & df_preprocesado$hour < 6  ~ "Madrugada",
-  df_preprocesado$hour >= 6 & df_preprocesado$hour < 12 ~ "Mañana",
-  df_preprocesado$hour >= 12 & df_preprocesado$hour < 18 ~ "Tarde",
-  df_preprocesado$hour >= 18 & df_preprocesado$hour < 24 ~ "Noche",
-  TRUE ~ NA_character_
-)
+### 5.1.5. Técnica de resolución
 
-df_counts <- df_preprocesado %>%
+Extraer las franjas horarias. La columna startime contiene la hora por lo que se puede calcular la franja horaria que se definen de la siguiente manera:
+
+-   Madrugada: de 0 a 6 horas.
+
+-   Mañana: de 6 a 12 horas.
+
+-   Tarde: de 12 a 18 horas.
+
+-   Noche: de 18 a 24 horas.
+
+Con las franjas horarias definidas se saca un recuento de los viajes por estación del año iniciados en cada una de las franjas para sacar un histograma y poder visualizar el análisis.
+
+```{r mantenimiento_por_franjahoraria}
+df_time_periods <- df_mantenimiento %>%
   group_by(season, time_period) %>%
   summarise(total_rides = n(), .groups = 'drop')
-df_counts
 
-ggplot(df_counts, aes(x = time_period, y = total_rides, fill = season)) +
+ggplot(df_time_periods, aes(x = time_period, y = total_rides, fill = season)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(title = "Uso de bicicletas por franja horaria y estación del año",
-       x = "Franja horaria", y = "Número de viajes", fill = "Estación") +
+       x = "Franja horaria", y = "Número de viajes", fill = "Estación del año") +
   theme_minimal() +
   scale_fill_manual(values = c("Invierno" = "#1f77b4", "Primavera" = "#2ca02c", 
                                "Verano" = "#ff7f0e", "Otoño" = "#d62728"))
 ```
 
-```{r}
-df_preprocesado <- df_preprocesado %>%
-  mutate(start_hour = hour(starttime))
+También se incluye para completar el análisis un histograma con el recuento de viajes iniciados por horas marcando en distinto color las horas donde más uso se ha dado a las bicicletas.
 
-hourly_usage <- df_preprocesado %>%
+```{r mantenimiento_por_hora}
+hourly_usage <- df_mantenimiento %>%
   group_by(start_hour) %>%
   summarise(trips = n(), .groups = "drop") %>%
   arrange(start_hour)
@@ -393,8 +460,12 @@ ggplot(hourly_usage, aes(x = start_hour, y = trips, fill = color)) +
   theme(axis.text.x = element_text(angle = 0, vjust = 0.5)) 
 ```
 
-```{r}
-station_usage <- df_preprocesado %>%
+### 5.1.6. Técnica de resolución
+
+Extracción de uso por estación. Para poder tener una mejor compresión sobre el recuento de usos de las estaciones se realizan mapas. Las estaciones se clasifican en cuartiles según su nivel de uso y se les asigna un color para una mejor compresión de los mapas.
+
+```{r mantenimiento_mapas_estaciones}
+station_usage <- df_mantenimiento %>%
   group_by(start.station.id, start.station.name, start.station.latitude, start.station.longitude) %>%
   summarise(total_starts = n(), .groups = "drop") %>%
   arrange(desc(total_starts))
@@ -464,14 +535,272 @@ l2
 l3
 ```
 
-## SEGUNDA PREGUNTA GRUPAL:
+### 5.1.7. Conclusión
+
+Tras analizar los mapas (cualquiera de los generados tanto l1, como l2, como l3) podemos ver las zonas donde hay mayor tránsito y, por lo tanto, necesitaremos una mayor o menor frecuencia en cuanto al mantenimiento.
+
+-   En la zona sur hay un bajo uso o como mucho, un uso moderado por lo que en este caso vemos óptimo realizar un mantenimiento de manera semestral. Específicamente en el mes de abril y otra en diciembre que es cuando inicia y acaba el pico de demanda como podemos ver en los gráficos mantenimiento_viajes_globales y mantenimiento_viajes_por_anio.
+-   En la zona norte y central, revisiones mensuales sería la mejor opción, pues vemos una mezcla de Q2 en su mayoría junto a algunos Q1 y Q3. El día de la semana idóneo para ello sería el domingo, pues tiene una menor demanda de uso y en cuanto a las horas, sí que es cierto que las mejores horas para realizar mantenimiento son entre las 0:00 y las 5:00, cuando la demanda es más baja, pero teniendo en cuenta que es domingo utilizar esos horarios de trabajo sería un alto costo así que consideramos que la siguiente franja idónea sería de 11:00 a 15:00. Si fuese necesario en vez de mensual reducir el número de semanas se podría considerar si la demanda de uso aumenta repentinamente.
+-   En la zona oeste es donde mayor acumulación de tránsito encontramos prácticamente todo q4 y q3 está en esa zona por lo que es obligatorio realizar revisiones semanales en esa zona en las franjas y día propuesto previamente, siempre evitando las horas pico 8, 17 y 18. En verano e inicios de otoño, creemos que podría ser una buena práctica hacer comprobaciones a ciertas estaciones, es decir, cada día de la semana se revisan un número de estaciones y así como en el siguiente día se revisen otro número distinto.
+
+## 5.2. SEGUNDA PREGUNTA GRUPAL:
 
 -   **¿Cómo puedo saber cuáles podrían ser las bicis más susceptibles a tener algún defecto?**
 
-## Conclusiones
+# 6. Preguntas Individuales
 
-Indicar resultados y conclusiones a las preguntas.
+## 6.1 Aitor Rodríguez Dueñas
 
-Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+-   **¿Los usuarios Customer tratan peor las bicicletas que los usuarios Suscriber?**
 
-## Preguntas Individuales
+    -   Hipótesis:
+
+        -   Hipótesis nula (H0): No hay diferencia en el desgaste de bicicletas entre "Customers" y "Subscribers".
+        -   Hipótesis alternativa (Ha): Los "Customers" (usuarios ocasionales de entre 24 horas a 3 días) pueden tratar las bicicletas con menos cuidado que los "Subscribers" (tienen una suscripción anual), lo que podría reflejarse en un mayor desgaste de las bicicletas que usan.
+
+    -   Suposiciones:
+
+        -   Como no tenemos datos explícitos de fallos o mantenimiento, usaremos métricas indirectas como la velocidad promedio y la distancia recorrida por tipo de usuario. Un desgaste mayor podría manifestarse en patrones de uso más bruscos (velocidades inusuales) o en bicicletas que recorren distancias cortas debido a un posible mal funcionamiento, como se hizo en una de nuestras preguntas grupales.
+
+    -   Análisis exploratorio inicial:
+
+        -   Antes de aplicar un test estadístico, haríamos un resumen descriptivo, esto nos dará una idea si hay diferencias notables.
+
+    -   Métricas:
+
+
+        -   Frecuencia de uso: Cuántos viajes ha realizado cada bicicleta (count(bikeid)).
+        -   Distancia total recorrida: Suma de distance_km por bicicleta.
+        -   Velocidad media: Puede mostrar velocidades más bajas en comparación con la media una bici mas lenta.
+
+    -   Abordaje:
+
+        -   Comparar la distancia media recorrida (distance_km) entre Customers y Subscribers.
+        -   Comparar la velocidad promedio (speed) entre ambos grupos.
+        -   Distribución de la duración del viaje (tripduration) por tipo de usuario.
+
+```{r aitor_agrupar_por_uso_bici}
+bike_usage <- df_preprocesado %>%
+  group_by(bikeid, usertype) %>%
+  summarise(
+    trips = n(),
+    total_distance = sum(distance_km, na.rm = TRUE),
+    avg_speed = mean(speed, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+-   Selección de test:
+
+    -   Previo a la selección del test estadístico debo confirmar si los datos son normales o no. Para ello usaré unos histogramas para visualizar las variables clave y posteriormente usar un QQ-plot con cada métrica para confirmar si los datos son normales.
+
+-   Comprobación de normalidad:
+
+```{r aitor_estudio_normalidad}
+hist(bike_usage$trips, main="Distribución del número de viajes", xlab="Viajes por bicicleta")
+hist(bike_usage$total_distance, main="Distribución de distancia total", xlab="Distancia (km)")
+hist(bike_usage$avg_speed, main="Distribución de velocidad promedio",breaks = 100, ,xlim = c(0, 15), xlab="Velocidad (km/h)")
+
+qqnorm(bike_usage$trips, main = "QQ-Plot: Número de viajes"); qqline(bike_usage$trips, col = "red")
+qqnorm(bike_usage$total_distance, main = "QQ-Plot: Distancia total"); qqline(bike_usage$total_distance, col = "red")
+qqnorm(bike_usage$avg_speed, main = "QQ-Plot: Velocidad promedio"); qqline(bike_usage$avg_speed, col = "red")
+
+```
+
+A partir de estas gráficas y viendo la QQ-plot el tercero (velocidad promedio) puede sugerir ciertas dudas pero teniendo en cuenta que los anteriores claramente no lo son voy a asumir que los datos no son normales. Por lo que el test estadístico que utilizaré para rechazar o no la hipótesis nula será el Test de Mann-Whitney U.
+
+-   Test de Mann-Whitney U:
+
+```{r aitor_test_mann-whitney}
+wilcox.test(trips ~ usertype, data = bike_usage)
+wilcox.test(total_distance ~ usertype, data = bike_usage)
+wilcox.test(avg_speed ~ usertype, data = bike_usage)
+```
+
+Observando los resultados del test podemos confirmar que se rechaza la hipótesis nula y viendo la cifra resultado se confirma la hipótesis alternativa, los usuarios Customer tratan peor (según las métricas propuestas) a las bicicletas que los Suscriber.
+
+-   **¿Cuáles son las rutas más populares según los usuarios?**
+
+    -   Abordaje:
+        -   Para abordar esta cuestión, calcularé las rutas más populares o transitadas, y posteriormente las representaré en un dashboard interactivo desarrollado en Shiny, integrando filtros temporales que permitirán visualizar las rutas más relevantes según el período de interés.
+    -   Funciones previas:
+        -   Primero procederé a calcular el top 10 de las rutas más populares a nivel global. Este análisis será visualizado a través de un diagrama especial utilizando la librería network3D. En este diagrama, además de mostrar los viajes entre las estaciones, se representarán de manera destacada aquellas rutas que sean recurrentes, es decir, que incluyan tanto el trayecto de ida como de vuelta, utilizando una representación gráfica en forma de curva. (Gracias a ChatGPT supe de esta librería)
+
+```{r aitor_rutas_network3d}
+top_rutas_network3d <- df_preprocesado %>%
+  group_by(start.station.name, end.station.name) %>%
+  summarise(total_trips = n(), .groups = "drop") %>%
+  arrange(desc(total_trips)) %>%
+  head(10)
+nodos <- data.frame(name = unique(c(top_rutas_network3d$start.station.name, top_rutas_network3d$end.station.name)))
+
+enlaces_network3d <- top_rutas_network3d %>%
+  mutate(
+    source = match(start.station.name, nodos$name) - 1,
+    target = match(end.station.name, nodos$name) - 1
+  ) %>%
+  select(source, target, total_trips)
+
+sankeyNetwork(
+  Links = enlaces_network3d,
+  Nodes = nodos,
+  Source = "source",
+  Target = "target",
+  Value = "total_trips",
+  NodeID = "name",
+  units = "viajes",
+  fontSize = 20,
+  nodeWidth = 15
+)
+```
+
+-Ahora haré un filtro interactivo en shiny (dashboard). Previo al dashboard calculare las rutas, ya que, son muchos datos de golpe si siempre se filtra todos los datos he decidido que un número asequible puede ser 10000, si se deseas ver más o menos datos modifica el head del chunk (está comentado).
+
+```{r aitor_precalcular_rutas}
+df_preprocesado_aitor_indv <- df_mantenimiento %>%
+  mutate(
+    month = as.numeric(format(starttime, "%m")),
+    weekday = as.numeric(format(starttime, "%d")),
+    hour = as.numeric(hour(starttime))
+  )
+
+rutas_populares <- df_preprocesado_aitor_indv %>%
+  group_by(start.station.id, start.station.name, start.station.latitude, start.station.longitude,
+           end.station.id, end.station.name, end.station.latitude, end.station.longitude,
+           year, month, weekday, hour) %>%
+  summarise(total_trips = n(), .groups = "drop") %>%
+  arrange(desc(total_trips)) %>%
+  head(10000) # Si deseas ver más datos añade más instancias siendo el máximo 1701873, a coste de ir muy lento.
+
+saveRDS(rutas_populares, "rutas_populares.rds")
+```
+
+-   Interfaz de filtros (UI):
+
+```{r aitor_ui_shiny}
+ui <- fluidPage(
+  titlePanel("Mapa Interactivo de Rutas Populares"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("año", "Seleccionar Año:", 
+                  choices = c("Todos", 2015:2021), selected = "2019"),
+      selectInput("mes", "Seleccionar Mes:", 
+                  choices = c("Todos", 1:12), selected = "6"),
+      selectInput("dia", "Seleccionar Día:", 
+                  choices = c("Todos", 1:31), selected = "4"),
+      selectInput("hora", "Seleccionar Hora:", 
+                  choices = c(0:23), selected = "19")
+    ),
+      mainPanel(
+      leafletOutput("mapa_rutas", height = "600px"),
+      
+      # Leyenda fuera del mapa con espacio arriba
+      tags$div(
+        style = "margin-top: 20px; padding: 10px; background: white; border-radius: 5px; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); max-width: 300px;",
+        tags$h4("Leyenda", style = "margin-top: 0; margin-bottom: 10px;"),
+        
+        tags$div(
+          style = "display: flex; align-items: center; margin-bottom: 10px;",
+          tags$img(src = "https://cdn-icons-png.flaticon.com/128/2278/2278380.png", width = "30px", height = "30px", style = "margin-right: 10px;"),
+          "Estaciones de salida"
+        ),
+        
+        tags$div(
+          style = "display: flex; align-items: center; margin-bottom: 10px;",
+          tags$span(style = "display: inline-block; width: 15px; height: 15px; background: blue; border-radius: 50%; margin-right: 10px;"),
+          "Estaciones de llegada"
+        ),
+        
+        tags$div(
+          style = "display: flex; align-items: center; margin-bottom: 10px;",
+          tags$span(style = "display: inline-block; width: 40px; height: 5px; background: red; margin-right: 10px;"),
+          "Rutas"
+        )
+      )
+    )
+  )
+)
+```
+
+-   Server:
+
+```{r aitor_server_shiny}
+server <- function(input, output) {
+  
+  output$mapa_rutas <- renderLeaflet({
+    rutas_populares <- readRDS("rutas_populares.rds")
+    
+    # Filtrar rutas populares por año, mes, día y hora seleccionados
+    if (input$año != "Todos") {
+      rutas_populares <- rutas_populares %>% filter(year == input$año)
+    }
+    if (input$mes != "Todos") {
+      rutas_populares <- rutas_populares %>% filter(month == input$mes)
+    }
+    if (input$dia != "Todos") {
+      rutas_populares <- rutas_populares %>% filter(weekday ==  input$dia)
+    }
+    if (input$hora != "Todos") {
+      rutas_populares <- rutas_populares %>% filter(hour == input$hora)
+    }
+
+    # Filtrar las filas con coordenadas válidas
+    rutas_populares <- rutas_populares %>%
+      filter(!is.na(start.station.latitude) & !is.na(start.station.longitude) &
+             !is.na(end.station.latitude) & !is.na(end.station.longitude) &
+             start.station.latitude != 0 & start.station.longitude != 0 &
+             end.station.latitude != 0 & end.station.longitude != 0)
+
+    # Verificar si hay rutas válidas después del filtrado
+    if (nrow(rutas_populares) == 0) {
+      return(leaflet() %>% addTiles() %>% addMarkers(lat = 40.72760, lng = -74.04425, label = "No hay rutas disponibles"))
+    }
+    
+    # Custom Icons
+    start_icon <- makeIcon(
+      iconUrl = "https://cdn-icons-png.flaticon.com/128/2278/2278380.png",
+      iconWidth = 30, iconHeight = 30
+    )
+
+    
+    mapa <- leaflet() %>%
+      addTiles()
+    mapa <- mapa %>%
+      addMarkers(lng = rutas_populares$start.station.longitude,
+                 lat = rutas_populares$start.station.latitude,
+                 icon = start_icon,
+                 label = rutas_populares$start.station.name)
+    mapa <- mapa %>%
+      addCircleMarkers(lng = rutas_populares$end.station.longitude,
+                       lat = rutas_populares$end.station.latitude,
+                       radius = 5, color = "blue", fillOpacity = 1,
+                       label = rutas_populares$end.station.name)
+    mapa <- mapa %>%
+      addPolylines(
+        lng = cbind(rutas_populares$start.station.longitude, rutas_populares$end.station.longitude),
+        lat = cbind(rutas_populares$start.station.latitude, rutas_populares$end.station.latitude),
+        color = "red", weight = 3, opacity = 0.7
+      )
+    return(mapa)
+  })
+}
+
+
+```
+
+-   Dashboard:
+
+```{r aitor_ejecucion_dashboard}
+shinyApp(ui, server)
+```
+
+-   Conclusiones:
+    -   Con observar la primera gráfica ya puedes ver las rutas más populares, además que la itención de esta pregunta ha sido la de poder representar de varias maneras originales las rutas en bici. Como conclusión adicional puedo añadir que es lógico que las rutas más populares acaben siendo los sitios más céntricos, pues es donde mayor tránsito y donde se encuentran muchos puestos de trabajo posiblemente. Así pues es normal que coincidan tanto ida como vuelta en ciertas estaciones en el top 10 de rutas populares.
+
+
+## 6.2 José Luis Costela Guijosa
+
+## 6.3 Marta Reyes López
+
+## 6.4 Manuel Sánchez Jiménez
+
