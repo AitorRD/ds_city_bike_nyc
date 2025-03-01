@@ -331,27 +331,226 @@ En base a estos resultados, se concluye que el análisis ha permitido identifica
 
 ## ¿Hay diferencias en el uso de bicicletas según el género? ¿Y en la fidelidad de los clientes teniendo en cuenta este?
 
-Para abordar esta cuestión, volvemos a situarnos desde la perspectiva del gestor de la empresa City Bike. El objetivo es realizar un estudio que analice si existen diferencias significativas en el uso de bicicletas en función del género de los usuarios. En particular, se pretende investigar si existe una relación entre el género y la fidelidad de los clientes, evaluando si hay una mayor tendencia hacia el uso como suscriptor o como cliente ocasional en función del género. Esta información podría resultar de gran valor para la empresa, ya que, por ejemplo, permitiría orientar futuras campañas de marketing de manera más efectiva, adaptándolas a las características y comportamientos de cada segmento de usuarios, en caso de detectarse patrones diferenciales relevantes.
+Para abordar esta cuestión, volvemos a situarnos desde la perspectiva del gestor de la empresa City Bike. El objetivo es realizar un estudio a través de visualización que analice si existen diferencias significativas en el uso de bicicletas en función del género de los usuarios. Esta información podría resultar de gran valor para la empresa, ya que, por ejemplo, permitiría orientar futuras campañas de marketing de manera más efectiva, adaptándolas a las características y comportamientos de cada segmento de usuarios, en caso de detectarse patrones diferenciales relevantes.
 
 ### Desarrollo del análisis
 
+Este estudio parte del dataset "df_preprocesado", ya preprocesado previamente.
 
+Dado que el objetivo del análisis es estudiar los viajes realizados en función del género del usuario, el primer paso consiste en eliminar todas aquellas instancias en las que no se dispone de información sobre el género, garantizando así la coherencia y calidad de los resultados obtenidos.
 
+Además, se han realizado varias transformaciones en el dataset, creando tres nuevas columnas que serán de utilidad en las etapas posteriores de este análisis. Estas nuevas variables son:
 
+- month_year: Cadena de texto que representa el mes y el año en el que se ha realizado cada viaje.
+- month: Cadena de texto que indica el mes correspondiente a la fecha del viaje realizado.
+- weekday: Cadena de texto que indica el día de la semana en el que se ha efectuado el viaje.
 
+```{r}
 
+JLCG_df_gender <- df_preprocesado %>%
+  filter(gender != 0) 
 
+# TODO: quitar y cambiar estos valores cuando ya sean tipo string
+JLCG_df_gender <- JLCG_df_gender %>%
+                    mutate(
+                      gender = ifelse(gender == 1, "Hombre", "Mujer"),
+                      month_year = format(starttime, "%B %Y"),
+                      month = format(starttime, "%B"),            
+                      weekday = format(starttime, "%A") 
+                    )
 
+```
 
-Una vez hecho todo esto, puedes responder la pregunta:
+Tras realizar el tratamiento mencionado, se han generado cuatro nuevos datasets que servirán como base para llevar a cabo el análisis. Los datasets se describen a continuación:
 
-¿Hay un género que usa más las bicicletas?
-¿Hay diferencias en cuánto tiempo las usan?
-¿Hay un género más fiel (con mayor proporción de suscriptores)?
-¿Existen patrones horarios o de trayectos diferenciados por género?
-¿Debemos crear campañas específicas para atraer o fidelizar a un género en particular?
-Si quieres analizar si hay una asociación entre género y tipo de usuario (fiel vs. esporádico), puedes hacer un test de chi-cuadrado.
+- JLCG_df_monthly: este dataset contine una agrupación por cada mes donde se recoge el número total de viajes en cada mes además de la fecha del primer viaje realizado ese mes para cada uno de los géneros.
 
-- Hacer dashboard con información por género
-- Análisis estadístico entre género y tipo de usuario (fiel vs. esporádico), puedes hacer un test de chi-cuadrado.
-- 
+```{r}
+
+JLCG_df_monthly <- JLCG_df_gender %>%
+  group_by(month_year, gender) %>%
+  summarise(n_viajes = n(),
+            fecha_minima = min(starttime, na.rm = TRUE),
+            .groups = "drop")
+
+```
+
+- JLCG_df_by_month: Este dataset contiene una agrupación por meses, sin diferenciar entre años. En él se recoge la media de duración de los viajes y la media de viajes realizados en cada mes a lo largo de todo el periodo analizado.
+
+```{r}
+
+JLCG_df_by_month <- JLCG_df_gender %>%
+  group_by(month, gender) %>%
+  summarise(tripduration_mean = mean(tripduration, na.rm = TRUE),
+            fecha_minima = min(starttime, na.rm = TRUE),
+            total_viajes = n(),
+            meses_unicos = n_distinct(floor_date(starttime, "month")),
+            media_viajes_por_mes = total_viajes / meses_unicos,
+            .groups = "drop")
+
+```
+
+- JLCG_df_by_weekday: Este dataset contiene una agrupación por días de la semana. En él se recoge la media de duración de los viajes y la media de viajes realizados por cada día de la semana a lo largo de todo el periodo analizado.
+
+```{r}
+
+JLCG_df_by_weekday <- JLCG_df_gender %>%
+  group_by(weekday, gender) %>%
+  summarise(tripduration_mean = mean(tripduration, na.rm = TRUE),
+            fecha_minima = min(starttime, na.rm = TRUE),
+            total_viajes = n(),
+            semanas_unicas = n_distinct(floor_date(starttime, "week")),
+            media_viajes_por_dia = total_viajes / semanas_unicas,
+            .groups = "drop")
+
+```
+
+- JLCG_df_stack: Este dataset recoge una agrupación de los datos por género y tipo de usuario. En él se calcula el porcentaje que representa cada tipo de usuario (suscriptor u ocasional) dentro de cada uno de los géneros.
+
+```{r}
+
+JLCG_df_stack <- JLCG_df_gender %>%
+                  group_by(gender, usertype) %>%
+                  summarise(n = n(), .groups = "drop") %>%
+                  group_by(gender) %>%
+                  mutate(porcentaje = n / sum(n) * 100)
+
+```
+
+Una vez generados estos nuevos datasets, es fundamental definir el orden correcto tanto de los meses como de los días de la semana. Esto garantiza que, en las representaciones gráficas realizadas posteriormente con ggplot, se respete el orden cronológico adecuado. Para ello, los valores correspondientes a los meses y a los días de la semana se convierten en factores, asignándoles un orden específico acorde a su secuencia temporal.
+
+```{r}
+
+JLCG_df_monthly <- JLCG_df_monthly %>%
+  mutate(month_year = factor(month_year, levels = unique(month_year[order(fecha_minima)])))
+
+JLCG_df_by_month <- JLCG_df_by_month %>%
+  mutate(month = factor(month, levels = c("enero", "febrero", "marzo", "abril", "mayo", "junio", 
+                                          "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")))
+
+JLCG_df_by_weekday <- JLCG_df_by_weekday %>%
+  mutate(weekday = factor(weekday, levels = c("lunes", "martes", "miércoles", 
+                                               "jueves", "viernes", "sábado", "domingo")))
+
+```
+
+Finalizado el tratamiento de los nuevos datasets, el siguiente paso consiste en representar gráficamente la información, con el objetivo de extraer conclusiones y obtener nuevo conocimiento a partir del análisis realizado.
+
+Las gráficas planteadas se describen a continuación:
+
+- JLCG_grafica_piramide: muestra la evolución mensual del número de viajes realizados en bicicleta por hombres y mujeres para comparar su volumen de uso a lo largo del tiempo.
+
+```{r}
+
+JLCG_grafica_piramide <- ggplot(JLCG_df_monthly, aes(x = month_year, y = ifelse(gender == "Hombre", -n_viajes, n_viajes), fill = gender)) +
+                            geom_bar(stat = "identity") +
+                            coord_flip() +
+                            scale_y_continuous(labels = abs) +
+                            scale_fill_manual(values = c("Hombre" = "steelblue", "Mujer" = "plum")) +
+                            labs(title = "Uso de bicicletas por mes y género",
+                                 x = "Mes",
+                                 y = "Número de viajes",
+                                 fill = "Género") +
+                            theme_minimal()
+
+```
+
+- JLCG_grafica_duracion_diario: muestra la duración media de los viajes en bicicleta para hombres y mujeres en cada día de la semana para comparar cómo varía el tiempo de uso entre géneros según el día.
+
+```{r}
+
+JLCG_grafica_duracion_diario <- ggplot(JLCG_df_by_weekday, aes(x = weekday, y = tripduration_mean, color = gender, group = gender)) +
+                                  geom_line(linewidth = 1) +
+                                  geom_point(size = 3) +
+                                  scale_color_manual(values = c("Hombre" = "steelblue", "Mujer" = "plum")) +
+                                  labs(title = "Duración media de viajes por día de la semana y género",
+                                       x = "Día de la semana",
+                                       y = "Duración media del viaje (minutos)",
+                                       color = "Género") +
+                                  theme_minimal()
+
+```
+
+- JLCG_grafica_duracion_mensual: muestra la duración media de los viajes en bicicleta para hombres y mujeres a lo largo de los meses del año, permitiendo observar patrones estacionales y diferencias entre géneros.
+
+```{r}
+
+JLCG_grafica_duracion_mensual <- ggplot(JLCG_df_by_month, aes(x = month, y = tripduration_mean, color = gender, group = gender)) +
+                                    geom_line(linewidth = 1) +
+                                    geom_point(size = 3) +
+                                    scale_color_manual(values = c("Hombre" = "steelblue", "Mujer" = "plum")) +
+                                    labs(title = "Duración media de viajes por mes y género",
+                                         x = "Mes",
+                                         y = "Duración media del viaje (minutos)",
+                                         color = "Género") +
+                                    theme_minimal()
+
+```
+
+- JLCG_grafica_viajes_diario: representa el número medio de viajes realizados por hombres y mujeres en cada día de la semana, lo que permite identificar qué días tienen mayor o menor uso según el género.
+
+```{r}
+
+JLCG_grafica_viajes_diario <- ggplot(JLCG_df_by_weekday, aes(x = weekday, y = media_viajes_por_dia, fill = gender)) +
+                                geom_bar(stat = "identity", position = position_dodge()) +
+                                scale_fill_manual(values = c("Hombre" = "steelblue", "Mujer" = "plum")) +
+                                labs(title = "Número medio de viajes por día de la semana y género",
+                                     x = "Día de la semana",
+                                     y = "Media de viajes por día",
+                                     fill = "Género") +
+                                theme_minimal()
+
+```
+
+- JLCG_grafica_viajes_mesual: representa el número medio de viajes realizados por hombres y mujeres en cada mes del año, permitiendo observar patrones estacionales de uso de las bicicletas según el género.
+
+```{r}
+
+JLCG_grafica_viajes_mesual <- ggplot(JLCG_df_by_month, aes(x = month, y = media_viajes_por_mes, fill = gender)) +
+                                geom_bar(stat = "identity", position = position_dodge()) +
+                                scale_fill_manual(values = c("Hombre" = "steelblue", "Mujer" = "plum")) +
+                                labs(title = "Número medio de viajes por mes y género",
+                                     x = "Mes",
+                                     y = "Media de viajes por mes",
+                                     fill = "Género") +
+                                theme_minimal()
+
+```
+
+- JLCG_grafica_porcentaje_fidelizacion: muestra la distribución porcentual de hombres y mujeres en función de su tipo de usuario (Subscriber o Customer), permitiendo analizar visualmente cuál de los dos géneros presenta una mayor fidelización al servicio de Citi Bike.
+
+```{r}
+
+JLCG_grafica_porcentaje_fidelizacion <- ggplot(JLCG_df_stack, aes(x = gender, y = porcentaje, fill = usertype)) +
+                                          geom_bar(stat = "identity", width = 0.7) +
+                                          labs(title = "Distribución de tipo de usuario por género",
+                                               x = "Género",
+                                               y = "Porcentaje",
+                                               fill = "Tipo de usuario") +
+                                          theme_minimal() +
+                                          geom_text(aes(label = paste0(round(porcentaje, 1), "%")), 
+                                                    position = position_stack(vjust = 0.5), size = 4, color = "white")
+
+```
+
+Para representar todas estas gráficas, se ha decidido integrarlas en un dashboard, lo que permite centralizar la visualización y facilita considerablemente el análisis de los datos.
+
+```{r}
+
+(JLCG_grafica_piramide | JLCG_grafica_porcentaje_fidelizacion) / 
+(JLCG_grafica_duracion_diario | JLCG_grafica_duracion_mensual) / 
+(JLCG_grafica_viajes_diario | JLCG_grafica_viajes_mesual)
+
+```
+
+### Conclusiones
+
+A partir de la visualización de las gráficas generadas, se extraen las siguientes conclusiones relevantes:
+
+- La primera gráfica revela un dato especialmente significativo: el uso del servicio de bicicletas por parte de los hombres es notablemente superior al de las mujeres, llegando a triplicar el número de viajes realizados por el género masculino. Además, se observa un leve crecimiento progresivo en el uso de las bicicletas en ambos géneros, con la excepción del año 2019, donde se aprecia un ligero descenso respecto al año anterior. Este comportamiento sugiere que podría ser interesante plantear campañas de marketing específicas dirigidas al público femenino, con el objetivo de incrementar su participación en el servicio, al ser un segmento de usuarios que aún no ha sido explotado con el mismo éxito que el masculino.
+
+- En la segunda gráfica, se observa que existe un mayor porcentaje de usuarios suscriptores dentro del género masculino en comparación con el femenino. Esta diferencia pone de manifiesto la necesidad de que el departamento de marketing explore estrategias específicas para fomentar la fidelización entre las usuarias, incentivando que aquellas que actualmente utilizan el servicio de forma ocasional se conviertan en suscriptoras. Este cambio de comportamiento podría traducirse en un aumento de ingresos recurrentes para la compañía.
+
+- El análisis de las gráficas JLCG_grafica_duracion_diario y JLCG_grafica_viajes_diario permite extraer varios patrones interesantes. Por un lado, se detecta un incremento en la duración media de los viajes durante los fines de semana, especialmente entre las mujeres. Esto sugiere que durante los fines de semana las bicicletas se utilizan con mayor frecuencia para paseos recreativos, mientras que entre semana predominan los desplazamientos funcionales (por ejemplo, para ir al trabajo). Además, se observa un gran descenso en el número de viajes realizados por los hombres durante los fines de semana, lo que refuerza esta hipótesis. Para el equipo de desarrollo de negocio, podría resultar útil analizar si es más rentable fomentar un mayor número de viajes cortos, como ocurre entre semana, o favorecer un menor numero de viajes, aunque de una duración mayor. Esta información puede orientar el diseño de campañas específicas según el perfil temporal de uso.
+
+- Por último, las gráficas JLCG_grafica_duracion_mensual y JLCG_grafica_viajes_mensual muestran que la evolución mensual del uso es muy similar para ambos géneros, con un claro incremento en los meses de verano. Este comportamiento estacional es esperable y coherente con el uso recreativo del servicio. Sin embargo, destaca un comportamiento particular en el mes de marzo, donde se observa que, de forma excepcional, la duración media de los viajes masculinos supera a la de los viajes femeninos. Este dato podría estar vinculado a algún evento específico se tenga en esa época del año. Esta anomalía resulta especialmente interesante para los departamentos de marketing y desarrollo de negocio, ya que evidencia la posible influencia de eventos externos en el uso del servicio. Analizar este tipo de correlaciones podría permitir a la empresa anticiparse y diseñar campañas especiales vinculadas a eventos locales, maximizando así el impacto positivo sobre la demanda del servicio.
