@@ -19,6 +19,7 @@ if (!require("lubridate")) install.packages("lubridate")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("plotly")) install.packages("plotly")
 if (!require("patchwork")) install.packages("patchwork")
+if (!require("prophet")) install.packages("prophet")
 
 library(patchwork)
 library(dplyr)
@@ -27,6 +28,7 @@ library(geosphere)
 library(lubridate)
 library(ggplot2)
 library(plotly)
+library(prophet)
 ```
 
 # New York City Bike Análisis
@@ -320,4 +322,48 @@ p3_no_outliers <- ggplot(df_sin_outliers, aes(y = tripduration_log)) +
 
 (p1_no_outliers | p3_no_outliers)
 
+```
+
+```{r}
+df_sin_outliers$hour <- hour(df_sin_outliers$starttime)
+
+df_sin_outliers %>%
+  group_by(hour, periodo) %>%
+  summarise(total_viajes = n()) %>%
+  ggplot(aes(x = hour, y = total_viajes, color = periodo)) +
+  geom_line() +
+  labs(title="Uso de bicicletas por hora antes y durante la pandemia",
+       x="Hora del día", y="Número de viajes") +
+  theme_minimal()
+```
+
+```{r}
+df_prophet_no_outliers <- df_sin_outliers %>%
+  group_by(ds = floor_date(as.Date(starttime), "month")) %>%  # Agrupar por semanas
+  summarise(y = sum(n()))  # Sumar el número de viajes por semana
+
+df_train_no_outliers <- df_prophet_no_outliers %>% filter(ds < "2020-03-01")
+# Crear y entrenar el modelo Prophet
+m_no_outliers <- prophet(df_train_no_outliers, daily.seasonality = TRUE)
+
+# Crear dataframe con fechas futuras (2 año más)
+future_no_outliers <- make_future_dataframe(m_no_outliers, periods = 2*365, freq = 'day')
+
+# Generar predicción
+forecast <- predict(m_no_outliers, future_no_outliers)
+
+df_compare_no_outliers <- df_prophet_no_outliers %>%
+  left_join(forecast %>% select(ds, yhat), by = "ds")  # 'yhat' es la predicción de Prophet
+
+head(df_compare_no_outliers)
+
+ggplot(df_compare_no_outliers, aes(x = ds)) +
+  geom_line(aes(y = y, color="Real"), size=1) +  # Datos reales
+  geom_line(aes(y = yhat, color="Predicción sin pandemia"), size=1, linetype="dashed") +  # Predicción Prophet
+  labs(title="Comparación entre Predicción y Datos Reales",
+       x="Fecha", y="Número de viajes") +
+  scale_color_manual(values=c("blue", "red")) +  # Azul para datos reales, rojo para predicción
+  theme_minimal()
+
+````
 ```
