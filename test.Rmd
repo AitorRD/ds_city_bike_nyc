@@ -1,0 +1,96 @@
+```{r}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Asumimos que ya tienes el dataframe cargado como df
+
+JLCG_df_gender <- df_preprocesado %>%
+  filter(gender != 0)
+
+
+JLCG_df_gender <- JLCG_df_gender %>%
+  mutate(month = month(starttime, label = TRUE),
+         weekday = wday(starttime, label = TRUE),
+         gender = factor(gender, levels = c(1, 2), labels = c("Hombre", "Mujer")),
+         usertype = factor(usertype))
+
+JLCG_df_violin <- JLCG_df_gender %>%
+  group_by(month, year, gender) %>%
+  summarise(
+    count_pm = n(),
+    .groups = "drop"
+  )
+
+ggplot(JLCG_df_violin, aes(x=gender, y=count_pm, fill=gender)) + # fill=name allow to automatically dedicate a color for each group
+  geom_violin()
+
+# ggplot(JLCG_df_gender, aes(x = month, y = ..count.., fill = gender)) +
+#   geom_violin(position = "dodge", scale = "width") +
+#   labs(title = "Distribución mensual de viajes por género",
+#        x = "Mes",
+#        y = "Número de viajes",
+#        fill = "Género") +
+#   theme_minimal()
+
+
+# JLCG_df_gender %>%
+#   group_by(gender, weekday) %>%
+#   summarise(avg_tripduration = mean(tripduration, na.rm = TRUE), .groups = "drop") %>%
+#   ggplot(aes(x = weekday, y = avg_tripduration, color = gender, group = gender)) +
+#   geom_line(size = 1) +
+#   geom_point() +
+#   labs(title = "Duración media del viaje por día de la semana y género",
+#        x = "Día de la semana",
+#        y = "Duración media (segundos)") +
+#   theme_minimal()
+# 
+# 
+# JLCG_df_gender %>%
+#   group_by(gender, month) %>%
+#   summarise(avg_tripduration = mean(tripduration, na.rm = TRUE), .groups = "drop") %>%
+#   ggplot(aes(x = month, y = avg_tripduration, color = gender, group = gender)) +
+#   geom_line(size = 1) +
+#   geom_point() +
+#   labs(title = "Duración media del viaje por mes y género",
+#        x = "Mes",
+#        y = "Duración media (segundos)") +
+#   theme_minimal()
+# 
+# JLCG_df_gender %>%
+#   group_by(gender, weekday) %>%
+#   summarise(avg_trips = n() / n_distinct(starttime), .groups = "drop") %>%
+#   ggplot(aes(x = weekday, y = avg_trips, fill = gender)) +
+#   geom_bar(stat = "identity", position = position_dodge()) +
+#   labs(title = "Número medio de viajes por día de la semana y género",
+#        x = "Día de la semana",
+#        y = "Número medio de viajes") +
+#   theme_minimal()
+# 
+# JLCG_df_gender %>%
+#   group_by(gender, month) %>%
+#   summarise(avg_trips = n() / n_distinct(starttime), .groups = "drop") %>%
+#   ggplot(aes(x = month, y = avg_trips, fill = gender)) +
+#   geom_bar(stat = "identity", position = position_dodge()) +
+#   labs(title = "Número medio de viajes por mes y género",
+#        x = "Mes",
+#        y = "Número medio de viajes") +
+#   theme_minimal()
+# 
+# 
+# tabla <- table(JLCG_df_gender$gender, JLCG_df_gender$usertype)
+# print(tabla)
+# 
+# resultado_chi2 <- chisq.test(tabla)
+# 
+# # Resultados
+# print(resultado_chi2)
+# 
+# # Si quieres un resultado más "limpio" para el informe:
+# cat(sprintf("Chi-cuadrado = %.2f, p-valor = %.5f", 
+#             resultado_chi2$statistic, 
+#             resultado_chi2$p.value))
+
+
+
+```
