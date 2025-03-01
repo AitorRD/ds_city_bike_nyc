@@ -39,7 +39,7 @@ El dataset disponible nos permite realizar este análisis mediante la evaluació
 
 El primer aspecto a considerar es el preprocesamiento necesario para garantizar un análisis preciso y relevante. Para garantizar que el análisis refleje el estado actual del servicio, se ha decidido utilizar únicamente los datos del último año. Esta decisión se debe a que la información más antigua podría no ser relevante para la toma de decisiones operativas. Por ejemplo, conocer la velocidad de una bicicleta en 2016 no aportaría valor, ya que, en caso de haber presentado algún problema, es probable que ya haya sido reparada o retirada del sistema. Al centrarnos en los datos recientes, aseguramos que los hallazgos sean representativos de la situación actual y permitan tomar decisiones basadas en información actualizada.
 
-```{r bicis_supceptibles_fallo_filtrado}
+```{r bicis_fallo_preprocesamiento_1}
 
 df_susceptibles_fallo <- df_preprocesado %>%
   filter(format(starttime, "%Y") %in% c("2020", "2021"))
@@ -48,82 +48,83 @@ df_susceptibles_fallo <- df_preprocesado %>%
 
 El siguiente aspecto a considerar en el preprocesamiento es la eliminación de valores atípicos (outliers). En particular, es importante identificar y gestionar casos en los que la bicicleta haya sido tomada y dejada en la misma estación. Dado el método de cálculo utilizado para la velocidad (distancia entre estaciones dividida por el tiempo de viaje), estos casos resultan en una velocidad igual a cero. Este fenómeno puede distorsionar el análisis y afectar la interpretación de los resultados, por lo que es necesario aplicar estrategias adecuadas para su tratamiento.
 
-```{r test}
+```{r bicis_fallo_preprocesamiento_2}
 
 df_susceptibles_fallo <- df_susceptibles_fallo %>% filter(distance_km != 0)
 
 ```
 
-Una vez eliminados los registros con distancias iguales a cero, se procede a revisar la existencia de posibles valores anómalos en las variables de velocidad y duración del viaje. Esta revisión tiene como objetivo detectar y eliminar las siguientes casuísticas:
-- Viajes con velocidades irreales, superiores a las que puede alcanzar un ciclista en condiciones normales.
+Una vez eliminados los registros con distancias iguales a cero, se procede a revisar la existencia de posibles valores anómalos en las variables de duración del viaje y velocidad. Esta revisión tiene como objetivo detectar y eliminar las siguientes casuísticas:
 - Viajes en los que, en lugar de desplazarse de un punto a otro, el usuario ha utilizado la bicicleta para realizar un recorrido circular o recreativo. Este tipo de trayectos puede generar velocidades calculadas que no reflejan un uso típico del sistema, afectando al análisis posterior.
+- Viajes con velocidades irreales, superiores a las que puede alcanzar un ciclista en condiciones normales.
 
-```{r test}
+```{r bicis_fallo_preprocesamiento_3}
+
+# Boxplot de la duracion de los viajes
+p1_tripduration <- ggplot(df_susceptibles_fallo, aes(y = tripduration)) +
+  geom_boxplot(fill="steelblue", outlier.color="red") +
+  labs(title="Boxplot de la duracion de los Viajes", y="Tiempo") +
+  theme_minimal()
 
 # Boxplot de la velocidad de los viajes
-p1_speed <- ggplot(df_susceptibles_fallo, aes(y = speed)) +
+p2_speed <- ggplot(df_susceptibles_fallo, aes(y = speed)) +
   geom_boxplot(fill="steelblue", outlier.color="red") +
   labs(title="Boxplot de la velocidad de los Viajes", y="Velocidad") +
   theme_minimal()
 
-# Boxplot de la duracion de los viajes
-p2_distance <- ggplot(df_susceptibles_fallo, aes(y = tripduration)) +
-  geom_boxplot(fill="steelblue", outlier.color="red") +
-  labs(title="Boxplot de la duracion de los Viajes", y="Distancia") +
-  theme_minimal()
-  
-(p1_speed | p2_distance)
-
-# Q1 <- quantile(df_susceptibles_fallo$speed, 0.25, na.rm = TRUE)
-# Q3 <- quantile(df_susceptibles_fallo$speed, 0.75, na.rm = TRUE)
-# IQR <- Q3 - Q1
-# 
-# limite_inferior <- Q1 - 1.5 * IQR
-# limite_superior <- Q3 + 1.5 * IQR
-# 
-# df_sin_outliers <- df_susceptibles_fallo %>%
-#   filter(speed >= limite_inferior & speed <= limite_superior)
-# 
-# df_outliers <- df_susceptibles_fallo %>%
-#   filter(speed < limite_inferior | speed > limite_superior)
-# 
-# nrow(df_outliers)
-# 
-# # Boxplot de la velocidad de los viajes
-# ggplot(df_sin_outliers, aes(y = speed)) +
-#   geom_boxplot(fill="steelblue", outlier.color="red") +
-#   labs(title="Boxplot de la velocidad de los viajes", y="Velocidad") +
-#   theme_minimal()
+(p1_tripduration | p2_speed)
 
 ```
 
-Notas:
-- Comentar que cogemos el último año ya que para resolver la pregunta no nos interesan datos de hace mucho tiempo
-- Revisar si quitar el +1 del group by porque es algo que me chirria
-- Ver si quitar outliers tipo velocidad 0 en aquellos viajes de coger y dejar la bici en el mismo lado
-- Revisar si quitar outliers de bicis que están mucho tiempo usandose (podría ser que son gente que cogen la bici durante un día entero sin soltarla)
-- Al cambiar los datos cambiarán seguramente el número de clusters -> Actualizar estos valores
-- Hacer estudio de que clusters son más prioritarios que otros para darles un valor de prioridad.
-- Ordenar bicis respecto al uso que tienen que tener
-- Hacer estudio de bicis que no se usen desde hace mucho? --> Prioridad mega alta porque tienen que tener algún fallo gordo
-- Revisar listado de bicis que se hayan usado en años anteriores pero no en este? O descartar esas suponiendo que es que han salido de uso.
+Tras el análisis de los datos, se observa la presencia de un elevado número de valores atípicos en la variable de duración de los viajes. Por este motivo, se ha decidido establecer un límite máximo de 75 minutos, al considerar que este es el tiempo máximo razonable que un usuario podría tardar en completar un trayecto, incluso en el caso de que la bicicleta presentase algún tipo de avería. Este valor se ha revisado analizando en google maps el tiempo del viaje que estima esta aplicación al ir entre las dos estaciones más distantes de nuestro dataset. Este valor está en torno a 45 minutos, decidiendo por nuestra parte añadir media hora más para no perder datos sensibles.
 
-```{r bicis_supceptibles_fallo}
+En cuanto a las velocidades registradas, se ha comprobado que los valores máximos observados son consistentes con velocidades reales alcanzables por un ciclista. Por lo tanto, en este caso no se considera necesario eliminar ninguna instancia en función de la variable de velocidad.
 
-df_filtrado <- df %>%
-  filter(format(starttime, "%Y") %in% c("2020", "2021"))
+```{r bicis_fallo_preprocesamiento_4}
 
-# crear el df de bicicletas group by bike id, creando las columnas:
-# - Velocidad media
-# - Última vez utilizada
-# - Primera vez utilizada
-# - Número de km recorridos totales
-# - Distancia media recorrida por día
-# - ¿Cuantas veces se ha utilizado?
-# - Alguna más?
+df_susceptibles_fallo <- df_susceptibles_fallo %>% filter(tripduration<=75)
+
+# Boxplot de la duracion de los viajes
+p1_tripduration_filtrado <- ggplot(df_susceptibles_fallo, aes(y = tripduration)) +
+  geom_boxplot(fill="steelblue", outlier.color="red") +
+  labs(title="Boxplot del tiempo de los viajes (Filtrado)", y="Tiempo del viaje") +
+  theme_minimal()
+
+# Boxplot de la velocidad de los viajes
+p2_speed_filtrado <- ggplot(df_susceptibles_fallo, aes(y = speed)) +
+  geom_boxplot(fill="steelblue", outlier.color="red") +
+  labs(title="Boxplot de la velocidad de los Viajes (Filtrado)", y="Velocidad") +
+  theme_minimal()
+
+(p1_tripduration_filtrado | p2_speed_filtrado)
 
 
-df_bikes <- df_filtrado %>%
+```
+
+Una vez eliminadas todas las instancias de trayectos que puedan afectar a nuestro análisis se ha procedido a la creación de un dataset que agrupe los datos preprocesados por bike_id, de forma que obtengamos un dataset en el que cada instancia sea una bicicleta y que tenga los siguientes atributos:
+
+1.  **bikeid**
+    - Identificador único de cada bicicleta
+2.  **velocidad_media**
+    - Velocidad media a la que ha ido cada bicicleta (km/h).
+3.  **ultima_vez_utilizada**
+    - Fecha y hora de la última vez que se utilizó cada bicicleta.
+4.  **primera_vez_utilizada**
+    - Fecha y hora de la primera vez que se utilizó cada bicicleta.
+5.  **km_totales**
+    - Distancia total recorrida por cada bicicleta (km).
+6.  **distancia_media_por_dia**:
+    - Distancia media recorrida por cada bicicleta por día.
+7.  **veces_utilizada**:
+    - Número de veces que se ha utilizado cada bicicleta.
+8.  **dias_uso**:
+    - Número de días entre primera_vez_utilizada y ultima_vez_utilizada.
+9.  **media_usos_por_dia**
+    - Media de usos de cada bicicleta por día.
+
+```{r bicis_fallo_nuevo_df}
+
+df_bikes <- df_susceptibles_fallo %>%
   group_by(bikeid) %>%
   summarise(
     velocidad_media = mean(speed, na.rm = TRUE),
@@ -134,35 +135,60 @@ df_bikes <- df_filtrado %>%
     veces_utilizada = n(),
     dias_uso = as.numeric(difftime(ultima_vez_utilizada, primera_vez_utilizada, units="days")) + 1,
     media_usos_por_dia = veces_utilizada / dias_uso 
-  
   )
 
-# TEEEEST
+```
 
-datos_cluster <- df_bikes %>% 
+Con el conjunto de datos ya preparado, el siguiente paso consiste en catalogar las bicicletas según el nivel de prioridad en su revisión. En este sentido, se ha considerado que aquellas bicicletas que llevan un largo periodo sin ser utilizadas deben ser priorizadas en el proceso de inspección y mantenimiento. Concretamente, se ha establecido que las bicicletas que no han sido utilizadas en los últimos tres meses serán clasificadas como prioritarias para su revisión.
+
+```{r bicis_fallo_no_usadas}
+
+df_bikes_not_used <- df_bikes %>% filter(ultima_vez_utilizada > as.Date("2020-11-01"))
+df_bikes_used <- df_bikes %>% filter(ultima_vez_utilizada <= as.Date("2020-11-01"))
+
+```
+
+Para el resto de bicicletas, es decir, aquellas que sí han sido utilizadas en los últimos tres meses, se ha decidido establecer su nivel de prioridad en la revisión mediante un proceso de clustering. Este análisis se basa en tres variables clave: la velocidad media, la distancia media recorrida por día y la media de usos por día. La selección de estas variables responde a los siguientes razonamientos:
+
+- Velocidad media baja: podría indicar que la bicicleta presenta algún defecto mecánico que impide al usuario circular a una velocidad normal.
+- Distancia media recorrida baja: podría ser señal de que los usuarios detectan un problema al inicio del trayecto y deciden devolver la bicicleta rápidamente.
+- Media de usos por día baja: una baja frecuencia de uso puede sugerir que los usuarios evitan dicha bicicleta por considerar que presenta algún tipo de fallo.
+
+Por todo ello, se construirá un nuevo dataframe que contendrá exclusivamente estas variables clave, sobre el cual se aplicará el proceso de clustering para determinar diferentes niveles de prioridad en la revisión de las bicicletas.
+
+```{r bicis_fallo_df_clustering}
+
+datos_cluster <- df_bikes_used %>% 
   select(velocidad_media, distancia_media_por_dia, media_usos_por_dia)
-
-# Normalizar los datos para evitar sesgos por diferencias de escala
+  
 datos_cluster <- scale(datos_cluster)
 
-# Determinar el número óptimo de clusters usando el método del codo
-set.seed(123)  # Para reproducibilidad
+```
+
+A continuación, se aplica el método del codo para determinar el número óptimo de clusters en el análisis de clustering.
+
+```{r bicis_fallo_metodo_codo}
+set.seed(123) 
 wss <- sapply(1:10, function(k){
   kmeans(datos_cluster, centers = k, nstart = 10)$tot.withinss
 })
 
-# Graficar el método del codo
 plot(1:10, wss, type="b", pch = 19, frame = FALSE,
      xlab="Número de Clusters", ylab="Suma de cuadrados dentro del grupo")
 
-# Aplicar k-means con el número óptimo de clusters (ejemplo con k=3)
+```
+
+Tal y como se observa en la gráfica, el punto en el que la curva comienza a aplanarse indica el número óptimo de clusters, que en este caso es 4.
+
+Para finalizar, se ha decidido utilizar la técnica de clustering K-Means con 4 clusters para agrupar las bicicletas según sus características de uso. Se utilizan las variables velocidad media, distancia media recorrida por día y media de usos por día para segmentarlas en grupos con comportamientos similares.
+
+```{r bicis_fallo_clustering}
 set.seed(123)
-kmeans_result <- kmeans(datos_cluster, centers = 5, nstart = 10)
+kmeans_result <- kmeans(datos_cluster, centers = 4, nstart = 10)
 
-# Agregar la etiqueta de cluster al dataframe original
-df_bikes$cluster <- as.factor(kmeans_result$cluster)
+df_bikes_used$cluster <- as.factor(kmeans_result$cluster)
 
-plot_ly(df_bikes, 
+plot_ly(df_bikes_used, 
         x = ~velocidad_media, 
         y = ~distancia_media_por_dia, 
         z = ~media_usos_por_dia, 
@@ -177,12 +203,34 @@ plot_ly(df_bikes,
 
 ```
 
-Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
-
-Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
-
 ## Conclusiones
 
-Indicar resultados y conclusiones a las preguntas.
+Tras la realización del análisis propuesto, se han obtenido varias agrupaciones que permiten clasificar las bicicletas en función de su probabilidad de presentar algún tipo de problema. Esta clasificación ha servido para establecer un sistema de prioridades en el mantenimiento de la flota, ordenando las bicicletas desde aquellas que requieren una revisión urgente hasta las que presentan un menor riesgo de incidencia.
 
-Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+Para ello, se han definido cinco categorías de prioridad: 'Muy alta', 'Alta', 'Media', 'Baja' y 'Muy baja', con los siguientes criterios de asignación:
+
+- Prioridad "Muy alta": Incluye las bicicletas que no han sido utilizadas en los últimos tres meses. La falta de uso prolongado sugiere que estos vehículos podrían presentar averías importantes o ser percibidos por los usuarios como defectuosos.
+- Prioridad "Alta": Comprende las bicicletas pertenecientes al cluster 1, caracterizadas por una baja media de usos diarios y una baja velocidad media, lo que puede indicar posibles fallos mecánicos.
+- Prioridad "Media": Corresponde a las bicicletas asignadas al cluster 2, que presentan una mayor media de usos diarios, aunque mantienen una velocidad media baja, lo que podría alertar sobre problemas de funcionamiento moderados.
+- Prioridad "Baja": Se ha asignado a las bicicletas del cluster 4, caracterizadas por un comportamiento estable en cuanto a su uso diario y con velocidades medias elevadas, lo que sugiere un buen estado general.
+Prioridad "Muy baja": Engloba las bicicletas pertenecientes al cluster 3, que destacan por recorrer mayores distancias diarias, lo que indica un alto nivel de confianza por parte de los usuarios y un estado técnico óptimo.
+
+```{r bicis_fallo_prioridades}
+
+df_prioridades_revision <- bind_rows(
+  df_bikes_not_used %>% 
+    transmute(bikeid, prioridad = "Muy alta"),
+  
+  df_bikes_used %>%
+    transmute(bikeid, 
+              prioridad = case_when(
+                cluster == "1" ~ "Alta",
+                cluster == "2" ~ "Media",
+                cluster == "4" ~ "Baja",
+                cluster == "3" ~ "Muy baja"
+              ))
+)
+
+str(df_prioridades_revision)
+
+```
