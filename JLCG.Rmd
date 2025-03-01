@@ -4,112 +4,329 @@ author: "Costela Guijosa, Jose Luis"
 date: "Febrero de 2025"
 output: html_document
 ---
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
-if (!require("dplyr")) install.packages("dplyr")
-if (!require("readr")) install.packages("readr")
-if (!require("geosphere")) install.packages("geosphere")
-if (!require("lubridate")) install.packages("lubridate")
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("plotly")) install.packages("plotly")
-if (!require("leaflet")) install.packages("leaflet")
-if (!require("leaflet.extras")) install.packages("leaflet.extras")
-if (!require("sf")) install.packages("sf")
-if (!require("spdep")) install.packages("spdep")
-if (!require("randomForest")) install.packages("randomForest")
-if (!require("viridis")) install.packages("viridis")
-
-library(dplyr)
-library(readr)
-library(geosphere)
-library(lubridate)
-library(ggplot2)
-library(plotly)
-library(leaflet)
-library(leaflet.extras)
-library(sf)
-library(spdep)
-library(randomForest)
-library(viridis)
-```
-
-```{r importacion_limpieza_tratamiento}
-
-df <- read.csv("data/bike_data (1).csv", stringsAsFactors = FALSE)
-
-df %>% summarise_all(~ sum(is.na(.)))
-
-df <- df %>% select(-c(birth.year))
-df <- df %>% mutate(gender = ifelse(is.na(gender), "NO_DEF", gender))
-df <- df %>% mutate(tripduration = tripduration / 60)
-
-df$distance_km <- distHaversine(df[, c("start.station.longitude", "start.station.latitude")],
-                                 df[, c("end.station.longitude", "end.station.latitude")]) / 1000
-
-
-df <- df %>% mutate(speed = (distance_km / tripduration)*60)
-
-df$starttime <- ymd_hms(df$starttime)
-df$stoptime <- ymd_hms(df$stoptime)
-
-
-```
+**NOTA:** Las variables creadas en esta sección empezarán por JLCG para asegurar que no se va a solapar ninguna variable con el análisis del resto de mis compañeros
 
 ## ¿Cuáles son las zonas con mayor concentración de bicicletas en la ciudad y cómo podría esto ayudar a recomendar la instalación de nuevas estaciones?
 
-El objetivo de este análisis es identificar las áreas de la ciudad con mayor concentración de viajes en bicicleta, tanto en términos de estaciones de origen como de destino. A través del estudio de estos patrones de uso, se pretende determinar si existen zonas con alta demanda donde podría ser necesario instalar nuevas estaciones para optimizar el servicio y mejorar la accesibilidad de los usuarios. Además, este análisis puede ayudar a redistribuir estaciones existentes y prever tendencias futuras en el uso del sistema Citi Bike.
+El objetivo de este análisis es identificar aquellas áreas de la ciudad con una mayor concentración de viajes en bicicleta, tanto en lo referente a las estaciones de origen como a las de destino. El estudio de estos patrones de uso permitirá detectar zonas con alta demanda donde podría ser recomendable la instalación de nuevas estaciones, con el fin de optimizar el servicio y mejorar la accesibilidad para los usuarios. Además, este análisis facilitará la redistribución estratégica de las estaciones existentes y permitirá anticipar tendencias futuras en el uso del sistema Citi Bike.
 
 ### Resolución de preguntas
 
+Para abordar esta pregunta, el primer paso ha consistido en analizar y segmentar la zona de Nueva York y Jersey City en distintas áreas, con el objetivo de identificar cuáles son las más utilizadas dentro del servicio de bicicletas. Para ello, se ha utilizado un conjunto de datos externo que divide el área geográfica en diferentes zonas y vecindarios.
 
+Para el área de Jersey City, el dataset ha sido obtenido a través del **Portal de Datos Abiertos de Jersey City**, una plataforma oficial que proporciona acceso a información geográfica y administrativa de la ciudad de Jersey City, en el distrito de Nueva Jersey. El enlace de acceso al dataset es el siguiente: [Portal de Datos Abiertos de Jersey City](https://data.jerseycitynj.gov/explore/dataset/jersey-city-neighborhoods/information/?utm_source=chatgpt.com&location=12,40.70875,-74.05489&basemap=jawg.light).
 
-```{r zonas_calientes}
+En el caso de Nueva York, el dataset proviene del **Portal Oficial de Datos Abiertos de la Ciudad de Nueva York**, una plataforma gestionada por el gobierno de la ciudad de Nueva York que ofrece acceso libre a una enorme cantidad de datasets públicos relacionados con diferentes aspectos de la ciudad. En concreto este dataset subdivide el distrito en los sectores utilizados por la policia de Nueva York. Si bien este dataset segmenta el distrito en sectores policiales, resulta válido para este estudio, ya que el objetivo de su incorporación es disponer de una referencia geográfica clara y definida que permita identificar y describir cada sector de forma más precisa y eficiente tras la realización del análisis. El enlace de acceso al dataset es el siguiente: [Portal Oficial de Datos Abiertos de la Ciudad de Nueva York](https://data.cityofnewyork.us/Public-Safety/NYPD-Sectors/eizi-ujye).
 
-# Agrupar datos por estación de inicio
-start_stations <- df %>%
-  group_by(start.station.latitude, start.station.longitude) %>%
-  summarise(count = n(), .groups = "drop")
+Los datasets utilizados, ambos en formato CSV y donde cada registro representa un vecindario o área diferente, presentan las siguientes características:
 
-# Crear mapa de calor con leaflet
+- Jersey City:
+  + Tamaño de archivo: 165 kB
+  + Número de atributos: 10
+  + Número de instancias: 53
+  
+- Nueva York:
+  + Tamaño de archivo: 4,4 MB
+  + Número de atributos: 7
+  + Número de instancias: 303
 
-pal <- colorNumeric(palette = rev(brewer.pal(11, "RdYlBu")), domain = c(0,1), na.color = "transparent")
+A continuación se describen las variables incluidas en el conjunto de datos referente a Jersey City:
 
-max_value <- max(start_stations$count)
+1.  **Geo Point**
+    -   Coordenadas del centro del vecindario (latitud y longitud).
+2.  **Geo Shape**
+    -   Coordenadas del polígono que delimita cada vecindario (objeto GeoJSON).
+3.  **cartodb_id**
+    -   Identificador único de cada vecindario (número del 1 al 53).
+4.  **area_sq_ft**
+    -   Área total de la ciudad de Jersey (pies cuadrados).
+5.  **acres**:
+    -   Área total de la ciudad de Jersey (acres).
+6.  **area**:
+    -   Nombre del área de la ciudad de Jersey a la que pertenece el vecindario.
+7.  **neighborhood**:
+    -   Nombre del vecindario de la ciudad de Jersey.
+8.  **color**
+    -   Código numérico asignado a algunos vecindarios para alguna referencia visual.
+    
+Por otro lado, las variables incluidas en el conjunto de datos correspondiente al distrito de Nueva York son las siguientes:
 
-start_stations %>%
-  leaflet() %>%
-  addTiles() %>%
-  addHeatmap(lng = ~start.station.longitude, lat = ~start.station.latitude, blur = 5, max = max_value, radius = 30,intensity = ~count)
+1.  **the_geom**
+    -   Coordenadas del polígono que delimita cada sector (objeto MULTIPOLYGON).
+2.  **sector**
+    -   Código identificador único de cada sector policial de la NYPD (ej: 100A).
+3.  **pct**
+    -   Precinto policial al que pertenece el sector (ej: 100).
+4.  **patrol_bor**
+    -   Distrito al que pertenece el sector.
+5.  **sq_miles**:
+    -   Área del sector en millas cuadradas.
+6.  **nco_phase**:
+    -   Fase o ciclo de implementación del programa NCO.
+7.  **sector_ind**:
+    -   Indicador alfabético dentro del precinto (ej: "A", "B", "C", etc.).
+    
+```{r JLCG_integracion}
 
-set.seed(123)
+JLCG_df_map_JC <- read.csv("data/JLCG/jersey-city-neighborhoods.csv", sep = ";")
+JLCG_df_map_NY <- read.csv("data/JLCG/NYPD_Sectors.csv")
+head(JLCG_df_map_JC)
+head(JLCG_df_map_NY)
 
-# Seleccionar coordenadas de estaciones con mayor uso
-station_coords <- start_stations %>%
-  select(start.station.latitude, start.station.longitude, count)
+```
+    
+Como primer paso para abordar la cuestión planteada, ha sido necesario realizar un proceso de preprocesamiento sobre estos nuevos datasets. En esta fase, se han aplicado los siguientes tratamientos a cada uno de sus atributos:
 
-# Aplicar K-Means con 5 clusters
-kmeans_result <- kmeans(station_coords[, c("start.station.latitude", "start.station.longitude")], centers = 5)
+Dataset de Jersey City:
 
-# Agregar cluster al dataset
-station_coords$cluster <- as.factor(kmeans_result$cluster)
+1.  **Geo Point**
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+2.  **Geo Shape**
+    -   Transformación desde su formato original (objeto GeoJSON) a una geometría espacial (sfc).
+3.  **cartodb_id**
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+4.  **area_sq_ft**
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+5.  **acres**:
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+6.  **area**:
+    -   Conservado sin modificaciones.
+7.  **neighborhood**:
+    -   Conservado sin modificaciones.
+8.  **color**
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+    
+```{r JLCG_preprocesamiento_limpieza_JC}
 
-# Visualización de clusters
-ggplot(station_coords, aes(x = start.station.longitude, y = start.station.latitude, color = cluster, size = count)) +
-  geom_point(alpha = 0.7) +
-  labs(title = "Clusters de Alta Demanda de Bicicletas",
-       x = "Longitud", y = "Latitud", color = "Cluster") +
-  theme_minimal()
+JLCG_df_map_JC$Geo.Shape <- geojsonsf::geojson_sfc(JLCG_df_map_JC$Geo.Shape)
+
+JLCG_df_map_JC <- JLCG_df_map_JC %>% select(-c(Geo.Point, cartodb_id, area_sq_ft, acres, color))
+
+```
+    
+Dataset de Nueva York:
+
+1.  **the_geom**
+    -   Transformación desde su formato original a una geometría espacial (sfc).
+2.  **sector**
+    -   Conservado sin modificaciones.
+3.  **pct**
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+4.  **patrol_bor**
+    -   Conservado sin modificaciones.
+5.  **sq_miles**:
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+6.  **nco_phase**:
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+7.  **sector_ind**:
+    -   Eliminación de este atributo debido a que no proporciona información de utilidad para el estudio.
+    
+```{r JLCG_preprocesamiento_limpieza_NY}
+
+JLCG_df_map_NY <- JLCG_df_map_NY %>%
+  st_as_sf(wkt = "the_geom", crs = 4326)
+
+JLCG_df_map_NY <- JLCG_df_map_NY %>% select(-c(pct, sq_miles, nco_phase, sector_ind))
+
+```
+
+Una vez realizados los procesos de preprocesamiento y tratamiento de ambos dataframes por separado, se procede a su unificación en un único dataframe que integre todos los sectores, abarcando tanto los correspondientes a Nueva York como a Jersey City. Aunque Nueva York y Nueva Jersey pertenecen a diferentes jurisdicciones y administraciones, su integración en un único dataset responde al interés analítico de tratar el sistema Citi Bike como una red conjunta que opera en ambos territorios.
+
+Tras la unificación de los datasets, se obtiene un nuevo conjunto de datos que cuenta con los siguientes atributos:
+
+1.  **geometry**
+    -   Coordenadas del polígono que delimita cada sector.
+2.  **area**
+    -   Distrito o área a la que pertenece el sector o vecindario.
+3.  **sector**
+    -   Sector o vecindario del distrito de Nueva York y Jersey City.
+    
+El último paso a seguir es el de transformar el dataframe en un objeto espacial sf, garantizando que leaflet pueda interpretar correctamente las geometrías.
+
+```{r JLCG_preprocesamiento_limpieza_merge}
+
+JLCG_df_map_JC <- JLCG_df_map_JC %>%
+  rename(geometry = Geo.Shape,
+         area = area,
+         sector = neighborhood)
+
+JLCG_df_map_NY <- JLCG_df_map_NY %>%
+  rename(geometry = the_geom,
+         area = patrol_bor,
+         sector = sector)
+
+JLCG_df_map <- bind_rows(JLCG_df_map_JC, JLCG_df_map_NY)
+
+JLCG_df_map <- st_sf(JLCG_df_map)
 
 
 ```
 
-Siguiendo rúbrica: - La complejidad e idoneidad de las técnicas de resolución empleadas. Se puntuarán mejor el uso de técnicas de machine learning o tests estadísticos a simples visualizaciones directas de los datos.
+Una vez finalizado el preprocesamiento del dataframe que contiene los sectores de Jersey City, se procede a realizar una agrupación en el dataset principal de este estudio. Esta agrupación se lleva a cabo tomando como referencia las estaciones de bicicletas, contabilizando el número de veces que cada estación aparece como punto de inicio de un viaje y como punto de finalización.
 
-Siguiendo rúbrica para visualización: - ¿Ha mostrado alguna visualización? ¿Cuántas? - ¿Siguen los criterios explicados en clase respecto de la veracidad y claridad de las visualizaciones? - ¿Les falta algún tipo de información contextual importante para entender el gráfico? - ¿Es el gráfico más adecuado para lo que quieren representar?
+```{r JLCG_agrupacion_estaciones_1}
+
+# Estaciones de salida
+JLCG_start_stations <- df_preprocesado %>%
+  group_by(start.station.latitude, start.station.longitude) %>%
+  summarise(
+    count_start = n(),
+    start.station.name = names(which.max(table(start.station.name))),
+    .groups = "drop"
+  )
+
+# Estaciones de llegada
+JLCG_end_stations <- df_preprocesado %>%
+  group_by(end.station.latitude, end.station.longitude) %>%
+  summarise(
+    count_end = n(),
+    end.station.name = names(which.max(table(end.station.name))),
+    .groups = "drop"
+  )
+
+```
+
+El siguiente paso consiste en la unificación de los dos dataframes trabajados previamente en un único dataframe. En este nuevo dataframe, cada instancia representa una estación de bicicletas, incluyendo para cada una de ellas su nombre, sus coordenadas geoespaciales y el número total de viajes registrados, tanto como estación de origen como de destino.
+
+```{r JLCG_agrupacion_estaciones_2}
+
+# Unir ambos dataframes por latitud y longitud
+JLCG_stations <- full_join(JLCG_start_stations, JLCG_end_stations,
+                               by = c("start.station.latitude" = "end.station.latitude",
+                                      "start.station.longitude" = "end.station.longitude"))
+JLCG_stations <- JLCG_stations %>% select(-start.station.name)
+JLCG_stations <- JLCG_stations %>% 
+  rename(name = end.station.name) %>% 
+  rename(latitude = start.station.latitude) %>% 
+  rename(longitude = start.station.longitude)
+
+# Si alguna estación solo aparece en salidas o en llegadas, sustituir NA por 0
+JLCG_stations <- JLCG_stations %>%
+  mutate(count_start = ifelse(is.na(count_start), 0, count_start),
+         count_end = ifelse(is.na(count_end), 0, count_end))
+
+# Columna total de viajes
+JLCG_stations <- JLCG_stations %>% mutate(count_total = count_start + count_end)
+
+```
+
+Con el objetivo de identificar las estaciones más concurridas, se plantea realizar un proceso de clustering geoespacial, considerando para cada estación su ubicación geográfica y el número total de usos registrados, tanto como punto de inicio como de finalización de viajes. Para ello, se ha seleccionado el algoritmo de k-means, que permitirá agrupar las estaciones en distintos clústeres según su nivel de actividad y su posición en el mapa, facilitando así la detección de patrones espaciales y la identificación de áreas clave dentro del sistema.
+
+Para garantizar que las distintas variables (latitud, longitud y número total de viajes) tengan un peso equivalente en el clustering, se procede a su normalización. Aunque latitud y longitud ya están en grados, se estandarizan junto al número de viajes para facilitar la convergencia del algoritmo k-means.
+
+Una vez realizado este ajuste, se utiliza el método del codo para determinar el número óptimo de clústeres.
+
+```{r JLCG_metodo_codo}
+
+# Normalización de variables
+JLCG_stations_scaled <- JLCG_stations %>%
+  mutate(lat_scaled = scale(latitude),
+         lon_scaled = scale(longitude),
+         count_scaled = scale(count_total))
+
+# Cálculo de WSS para diferentes valores de k
+set.seed(123)
+JLCG_wss <- sapply(1:10, function(k) {
+  kmeans(JLCG_stations_scaled[, c("lat_scaled", "lon_scaled", "count_scaled")], centers = k, nstart = 10)$tot.withinss
+})
+
+# Gráfico del método del codo
+plot(1:10, JLCG_wss, type = "b", pch = 19, frame = FALSE,
+     xlab = "Número de Clusters", ylab = "Suma de Cuadrados Intra-cluster (WSS)",
+     main = "Método del Codo para K óptimo")
+
+```
+
+Una vez graficado el método del codo se determina que el número óptimo de cluster se encuentra en 4, por lo que se procede a utilizar el algoritmo kmeans con este valor
+
+```{r JLCG_clustering}
+
+JLCG_k = 4
+
+set.seed(123)
+JLCG_kmeans <- kmeans(JLCG_stations_scaled[, c("lat_scaled", "lon_scaled", "count_scaled")], centers = JLCG_k, nstart = 10)
+
+JLCG_stations$cluster <- as.factor(JLCG_kmeans$cluster)
+
+```
+
+Finalmente, el último paso consiste en la representación gráfica de los datos analizados, permitiendo así una interpretación visual que facilite la extracción de conclusiones relevantes a partir de los resultados obtenidos.
+
+```{r JLCG_visualizacion}
+
+JLCG_cluster_palette <- colorFactor(palette = brewer.pal(JLCG_k, "Set1"), domain = JLCG_stations$cluster)
+JLCG_areas_palette <- colorFactor(palette = brewer.pal(n = length(unique(JLCG_df_map$area)), "Set3"), domain = JLCG_df_map$area)
+
+plot_ly(JLCG_stations, 
+      x = ~longitude, 
+      y = ~latitude, 
+      z = ~count_total, 
+      type = "scatter3d", 
+      mode = "markers",
+      color = ~cluster,
+      colors = sapply(levels(JLCG_stations$cluster), JLCG_cluster_palette),
+      marker = list(size = 5),
+      text = ~paste0("<b>Estación:</b> ", name, 
+                     "<br><b>Localización:</b> ", latitude, ", ", longitude, 
+                     "<br><b>Viajes:</b> ", count_total, 
+                     "<br><b>Cluster:</b> ", cluster),
+      hoverinfo = "text") %>%
+  layout(title = "Clusters geoespaciales - Distribución 3D de estaciones y uso",
+      scene = list(
+        xaxis = list(title = "Longitud"),
+        yaxis = list(title = "Latitud"),
+        zaxis = list(title = "Número total de viajes")
+      ))
+
+leaflet() %>%
+  addTiles() %>%
+  addPolygons(data = JLCG_df_map,
+              fillColor = ~JLCG_areas_palette(area),
+              color = "black",
+              weight = 1,
+              opacity = 0.8,
+              fillOpacity = 0.5,
+              popup = ~paste0(
+                "<b>Área:</b> ", area, "<br>",
+                "<b>Sector:</b> ", sector
+              )) %>%
+  addCircleMarkers(data = JLCG_stations,
+                   lng = ~longitude,
+                   lat = ~latitude,
+                   color = ~JLCG_cluster_palette(cluster),
+                   fillColor = ~JLCG_cluster_palette(cluster),
+                   fillOpacity = 0.8,
+                   radius = ~rescale(count_total, to = c(3, 10)),
+                   popup = ~paste0("<b>Estación:</b> ", name, 
+                                   "<br><b>Localización:</b> ", latitude, ", ", longitude, 
+                                   "<br><b>Viajes:</b> ", count_total, 
+                                   "<br><b>Cluster:</b> ", cluster),
+                   label = ~paste0("Estación: ", name))
+
+```
 
 ### Conclusiones
 
-Indicar resultados y conclusiones a las preguntas.
+A partir del análisis de los datos obtenidos, se concluye que los clusters 2 y 4 son los que presentan una mayor demanda y un uso más intenso de sus estaciones. En particular, las estaciones pertenecientes a estos clusters se localizan en Nueva Jersey. Destaca especialmente el cluster 2, que agrupa las estaciones con mayor número de viajes, situadas principalmente dentro del área de Downtown en Jersey City.
 
-Siguiendo rúbrica: - ¿Han respondido a las cuestiones planteadas? - ¿Es coherente la conclusión con el resto del proceso? - ¿Es realmente una conclusión lo que se ha obtenido o es una declaración de intenciones?
+Dentro de esta área, se identifica la estación Grove St PATH como la más demandada de todo el sistema, lo que refleja su papel clave en la red de transporte en bicicleta de la ciudad. Esta estación se encuentra ubicada en el sector Van Vorst Park, dentro del área Downtown.
+
+En base a estos resultados, se concluye que el análisis ha permitido identificar con éxito las zonas estratégicas a reforzar. La recomendación principal es la instalación de nuevas estaciones en el área de Downtown, especialmente en el sector Van Vorst Park, lo que permitirá aliviar la alta demanda registrada en la estación Grove St PATH y mejorar la distribución de bicicletas en esta zona clave.
+
+## Segunda pregunta
+
+¿Hay diferencias en el uso de bicicletas según el género?¿Hay diferencias en la fidelidad de los clientes según el género?
+
+Una vez hecho todo esto, puedes responder la pregunta:
+
+¿Hay un género que usa más las bicicletas?
+¿Hay diferencias en cuánto tiempo las usan?
+¿Hay un género más fiel (con mayor proporción de suscriptores)?
+¿Existen patrones horarios o de trayectos diferenciados por género?
+¿Debemos crear campañas específicas para atraer o fidelizar a un género en particular?
+Si quieres analizar si hay una asociación entre género y tipo de usuario (fiel vs. esporádico), puedes hacer un test de chi-cuadrado.
+
+- Hacer dashboard con información por género
+- Análisis estadístico entre género y tipo de usuario (fiel vs. esporádico), puedes hacer un test de chi-cuadrado.
+- 
