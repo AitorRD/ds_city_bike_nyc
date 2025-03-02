@@ -1551,4 +1551,253 @@ A partir de la visualización de las gráficas generadas, se extraen las siguien
 
 ## 6.3 Marta Reyes López
 
+### 6.3.1 ¿Cuáles son las horas críticas donde más se usan las bicicletas?
+
+#### 6.3.1.1 Introducción
+
+Determinar las horas críticas de uso de bicicletas es fundamental para la empresa, ya que permite optimizar el mantenimiento, distribución y disponibilidad de las bicicletas. Al conocer los momentos de mayor demanda, se pueden tomar decisiones estratégicas para mejorar la experiencia del usuario y reducir tiempos de espera.
+
+#### 6.3.1.2 Metodología del análisis
+
+Para identificar las horas de mayor uso, realizamos los siguientes análisis:
+
+-   **Análisis general por hora del día:** Agrupamos los datos por hora del día para detectar los momentos de mayor uso en promedio.
+-   **Comparación por año:** Evaluamos si el uso de bicicletas ha cambiado con el tiempo.
+-   **Análisis por zona:** Agrupamos las estaciones en distintas zonas según su latitud y longitud para determinar si hay variaciones en el uso en diferentes áreas.
+-   **Validación estadística con ANOVA:** Comprobamos si las diferencias en el uso de bicicletas por hora y por zona son significativas.
+
+#### 6.3.1.3 Agrupación de Datos por Hora del Día y Año
+
+Se crea un nuevo dataframe de trabajo y se extraen la hora y el año de cada registro de uso. Luego, se agrupan los datos para calcular el número total de viajes por hora y año.
+
+```{r marta_recuento_uso}
+MRL_df_preprocesado <- df_preprocesado
+MRL_df_preprocesado$MRL_hour <- hour(MRL_df_preprocesado$starttime)
+MRL_df_preprocesado$MRL_year <- year(MRL_df_preprocesado$starttime)
+
+MRL_hourly_usage_yearly <- MRL_df_preprocesado %>%
+  group_by(MRL_year, MRL_hour) %>%
+  summarise(MRL_total_rides = n()) %>%
+  arrange(MRL_year, desc(MRL_total_rides))
+
+MRL_hourly_avg_general <- MRL_hourly_usage_yearly %>%
+  group_by(MRL_hour) %>%
+  summarise(MRL_avg_rides = mean(MRL_total_rides)) %>%
+  arrange(desc(MRL_avg_rides))
+
+print(MRL_hourly_avg_general)
+print(MRL_hourly_usage_yearly)
+```
+
+#### 6.3.1.4 Comparación de Uso en General y por Año
+
+Para visualizar los patrones de uso, generamos una gráfica comparativa del uso de bicicletas en general y por año.
+
+```{r marta_gráfica_comparativa}
+ggplot() +
+  geom_line(data = MRL_hourly_avg_general, aes(x = MRL_hour, y = MRL_avg_rides), color = "blue", size = 1.5, linetype = "solid") +
+  geom_line(data = MRL_hourly_usage_yearly, aes(x = MRL_hour, y = MRL_total_rides, group = MRL_year, color = as.factor(MRL_year)), size = 1,  linetype = "dashed") +
+  labs(title = "Comparación de Uso: General vs. Por Año",
+       x = "Hora del Día",
+       y = "Cantidad de Viajes") +
+  theme_minimal()
+```
+
+#### 6.3.1.5 Análisis por Horas con Mayor Uso por Zona y Año
+
+Las estaciones de bicicletas se agrupan en zonas con base en su latitud y longitud para evaluar el uso en cada una de ellas.
+
+```{r marta_recuento_zona}
+MRL_assign_zone <- function(MRL_lat, MRL_lon) {
+  if (MRL_lat > 40.75 & MRL_lon < -73.98) {
+    return("Centro")
+  } else if (MRL_lat > 40.77) {
+    return("Norte")
+  } else if (MRL_lat < 40.73) {
+    return("Sur")
+  } else if (MRL_lon > -73.95) {
+    return("Este")
+  } else {
+    return("Oeste")
+  }
+}
+
+MRL_df_preprocesado$MRL_zone <- mapply(MRL_assign_zone, MRL_df_preprocesado$start.station.latitude, MRL_df_preprocesado$start.station.longitude)
+
+MRL_df_zone_usage_yearly <- MRL_df_preprocesado %>%
+  group_by(MRL_zone, MRL_year, MRL_hour) %>%
+  summarise(MRL_total_rides = n(), .groups = "drop") %>%
+  arrange(MRL_zone, MRL_year, desc(MRL_total_rides))
+
+MRL_hourly_avg_zone_yearly <- MRL_df_zone_usage_yearly %>%
+  group_by(MRL_zone, MRL_hour) %>%
+  summarise(MRL_avg_rides = mean(MRL_total_rides)) %>%
+  arrange(MRL_zone, desc(MRL_avg_rides))
+
+print(MRL_df_zone_usage_yearly)
+print(MRL_hourly_avg_zone_yearly)
+```
+
+#### 6.3.1.6 Gráfica de Uso por Zona y Año
+
+```{r marta_grafica_comparativa_zona}
+ggplot() +
+  geom_line(data = MRL_hourly_avg_zone_yearly, aes(x = MRL_hour, y = MRL_avg_rides, color = MRL_zone), size = 1.5, linetype = "solid") +
+  geom_line(data = MRL_df_zone_usage_yearly, aes(x = MRL_hour, y = MRL_total_rides, group = interaction(MRL_zone, MRL_year), color = MRL_zone), size = 1, linetype = "dashed", alpha = 0.5) +
+  labs(title = "Uso de Bicicletas por Zona y Año",
+       x = "Hora del Día",
+       y = "Promedio de Viajes") +
+  theme_minimal()
+```
+
+#### 6.3.1.7 Validación Estadística con ANOVA
+
+```{r marta_anova}
+MRL_anova_result_hour <- aov(MRL_avg_rides ~ MRL_hour, data = MRL_hourly_avg_general)
+MRL_anova_result_zone_hour <- aov(MRL_avg_rides ~ MRL_hour + MRL_zone, data = MRL_hourly_avg_zone_yearly)
+
+summary(MRL_anova_result_hour)
+summary(MRL_anova_result_zone_hour)
+```
+
+Si el valor p es menor a 0.05, podemos concluir que existen diferencias significativas en el uso de bicicletas entre distintas horas del día, años y zonas.
+
+#### 6.3.1.8 Conclusión
+
+Observando la primera gráfica en la que se puede visualizar durante los distintos años analizados el uso de las bicicletas a lo largo de las horas del día y la media de estos se puede ver claramente que las horas más críticas de uso son de 7-9 AM y 5-7 PM, lo que sugiere que las bicicletas se utilizan mayoritariamente para desplazamientos escolares y laborales siendo estas las horas comunes de comienzo y fin de jornada. En este primer análisis también se puede detectar que el uso de las bicicletas se mantiene estable durante las horas intermedias a las mencionadas.
+
+Respecto del segundo análisis se interpretar que el mayor uso de las bicicletas se da en la zona Sur sugiriendo que es una zona clave para la optimizacion del servicio de alquiler de bicicletas. En la zona Sur las horas de mayor demanda es la misma que en las otras zonas. En la zona Oeste y Centro pordía tener menos demanda debido a factores como el mayor uso de transporte público, menos densidad de estaciones de bicicletas o que no son zonas de laborables o escolares.
+
+Por último, mediante la utilización de la validación de anova se puede sacar la siguiente información:\
+
+-   **Primer ANOVA (MRL_hour como única variable)**
+
+    -   **Hipótesis nula (Ho):** No hay diferencia significativa en el uso de bicicletas según la hora del día.
+
+    -   **Hipótesis alternativa (Ha):** Sí hay una diferencia significativa.
+
+    -   **Resultados**:
+
+        -   Valor F = 5.554
+
+        -   p-valor = 0.0278, lo que indica que hay diferencias significativas en el uso de bicicletas según la hora del día (dado que p \< 0.05).
+
+        -   **Conclusión**: La cantidad de viajes varía significativamente a lo largo del día.
+
+-   **Segundo ANOVA (MRL_hour y MRL_zone como variables)**
+
+    -   **Hipótesis nula (Ho):** Ni la hora del día ni la zona influyen significativamente en el uso de bicicletas.
+
+    -   **Hipótesis alternativa (Ho):** Al menos una de estas variables influye significativamente.
+
+    -   **Resultados**:
+
+        -   **Para MRL_hour**:
+
+            -   Valor F = 6.613
+
+            -   p-valor = 0.0123, lo que confirma que la hora del día afecta significativamente el número de viajes.
+
+        -   **Para MRL_zone**:
+
+            -   Valor F = 39.132
+
+            -   p-valor = 4.9e-12, indicando que la zona influye de manera altamente significativa en el uso de bicicletas.
+
+        -   **Conclusión**: Tanto la hora del día como la zona tienen un impacto significativo en el uso de bicicletas, con un efecto más fuerte de la zona (p-valor mucho menor).confirmar que los picos de demanda
+
+Con esta información se respalda la necesidad estratégica diferenciadas según la zona y la hora, como una mejor redistribución de bicicletas o ajustes en la infraestructura según la demanda.
+
+### 6.3.2 ¿Los usuarios registrados hacen rutas más largas que los ocasionales?
+
+#### 6.3.2.1 Introducción
+
+Es fundamental para la empresa entender los patrones de uso de los distintos tipos de usuarios del servicio de bicicletas compartidas. Determinar si los usuarios registrados (Subscriber) realizan rutas más largas que los ocasionales (Customer) puede proporcionar información valiosa para la optimización del servicio. Esto puede influir en la distribución de las bicicletas, el diseño de tarifas y la planificación del mantenimiento.
+
+#### 6.3.2.2 Metodología del análisis
+
+Para responder a esta pregunta, se han seguido varios pasos en el análisis:
+
+-   **Limpieza de Datos**: Se han eliminado valores nulos en `User.Type` y filtrado viajes con duración excesiva (\> 180 minutos) para evitar distorsión. También se han eliminado valores atípicos usando el rango intercuartil (IQR).
+
+-   **Comparación de Duración de Viajes**: Se han calculado la media y mediana de duración de viajes por tipo de usuario para analizar diferencias.
+
+-   **Visualización de Datos**: Se ha generado un boxplot para comparar gráficamente las distribuciones de duración de viaje por tipo de usuario.
+
+-   **Comprobación Estadística**: Se ha realizado una prueba de normalidad y una prueba de Mann-Whitney para evaluar la significancia estadística de las diferencias observadas.
+
+#### 6.3.2.3 Limpieza de Datos
+
+Para evitar distorsiones en el análisis, realizamos una limpieza de datos eliminando valores atípicos y datos inconsistentes:
+
+```{r marta_limpieza_datos}
+MRL_df_preprocesado <- df_preprocesado %>% filter(!is.na(usertype))
+
+MRL_df_preprocesado <- MRL_df_preprocesado %>% filter(tripduration <= 10800)
+
+Q1 <- quantile(df$tripduration, 0.25, na.rm = TRUE)
+Q3 <- quantile(df$tripduration, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+MRL_df_preprocesado <- MRL_df_preprocesado %>% filter(tripduration >= lower_bound & tripduration <= upper_bound)
+```
+
+#### 6.3.2.4 Comparación de Duración de Viajes
+
+Calculamos la duración media y mediana de los viajes para cada tipo de usuario:
+
+```{r marta_calculo_media_mediana}
+MRL_df_preprocesado %>%
+  group_by(usertype) %>%
+  summarise(
+    mean_trip_duration = mean(tripduration, na.rm = TRUE),
+    median_trip_duration = median(tripduration, na.rm = TRUE),
+    count = n()
+  )
+```
+
+#### 6.3.2.5 Visualización de Datos
+
+Para visualizar la diferencia en la duración de los viajes entre los tipos de usuario, generamos un boxplot:
+
+```{r marta_boxplot}
+ggplot(MRL_df_preprocesado, aes(x = usertype, y = tripduration)) +
+  geom_boxplot() +
+  labs(title = "Comparación de Duración de Viajes por Tipo de Usuario",
+       x = "Tipo de Usuario",
+       y = "Duración del Viaje (segundos)") +
+  theme_minimal()
+```
+
+En el gráfico podemos observar que los usuarios de tipo Costumer tienen una mediana de duración más alta, lo que indica que sus viajes son más largos en promedio en comparación con los Subscriber. Además, el IQR de los Customer es más amplio, lo que sugiere una mayor variabilidad en la duración de sus viajes. En cambio, los Subscriber tienen bigotes más cortos, lo que indica que sus viajes suelen ser más homogéneos y cortos, aunque existen valores atípicos que indican que algunos usuarios registrados también realizan viajes largos.
+
+#### 6.3.2.6 Comprobación Estadística
+
+Para verificar si la diferencia entre los grupos es estadísticamente significativa, realizamos una prueba de Mann-Whitney (ya que la distribución no suele ser normal).
+
+```{r marta_comprobacion_estadistica}
+reg <- MRL_df_preprocesado$tripduration[df$usertype == "Subscriber"]
+cas <- MRL_df_preprocesado$tripduration[df$usertype == "Customer"]
+
+shapiro.test(sample(reg, 5000))  
+shapiro.test(sample(cas, 5000))
+
+wilcox.test(tripduration ~ usertype, data = df)
+```
+
+La prueba de normalidad (Shapiro-Wilk) confirma que las distribuciones de duración de viaje no siguen una distribución normal.
+
+Los valores de W son bajos y los p-values son 2. 2e-16, lo que indica que los datos no son normales, justificando el uso de pruebas no paramétricas.
+
+La prueba de Mann-Whitney (Wilcoxon rank sum test) confirma que la diferencia en la duración de los viajes entre los dos grupos es estadísticamente significativa.
+
+El valor p 2. 2e-16 indica que la diferencia observada en el boxplot no es aleatoria, sino que hay una diferencia real en los patrones de uso entre Customer y Subscriber.
+
+#### 6.3.2.7 Conclusiones
+
+Tras ver los resultados, se puede interpretar que los usuarios ocasionales (Customer) hacen viajes más largos y variados, seguramente por motivos recreativos o turísticos. De los usuarios registrados (Subscriber) los datos indican que usan el servicio de forma más predecible y para viajes mas cortos, segurmaente para desplazamientos diarios por motivos laborales o escolares. Esta informacion nos puede servir para ayudar a la empresa a adaptar sus estrategias de distribución de bicicletas y tarifas según el comportamiento de los diferentes tipos de usuarios.
+
 ## 6.4 Manuel Sánchez Jiménez
