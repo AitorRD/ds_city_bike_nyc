@@ -578,9 +578,7 @@ df_susceptibles_fallo <- df_susceptibles_fallo %>% filter(distance_km != 0)
 
 ```
 
-Una vez eliminados los registros con distancias iguales a cero, se procede a revisar la existencia de posibles valores anómalos en las variables de duración del viaje y velocidad. Esta revisión tiene como objetivo detectar y eliminar las siguientes casuísticas:
-- Viajes en los que, en lugar de desplazarse de un punto a otro, el usuario ha utilizado la bicicleta para realizar un recorrido circular o recreativo. Este tipo de trayectos puede generar velocidades calculadas que no reflejan un uso típico del sistema, afectando al análisis posterior.
-- Viajes con velocidades irreales, superiores a las que puede alcanzar un ciclista en condiciones normales.
+Una vez eliminados los registros con distancias iguales a cero, se procede a revisar la existencia de posibles valores anómalos en las variables de duración del viaje y velocidad. Esta revisión tiene como objetivo detectar y eliminar las siguientes casuísticas: - Viajes en los que, en lugar de desplazarse de un punto a otro, el usuario ha utilizado la bicicleta para realizar un recorrido circular o recreativo. Este tipo de trayectos puede generar velocidades calculadas que no reflejan un uso típico del sistema, afectando al análisis posterior. - Viajes con velocidades irreales, superiores a las que puede alcanzar un ciclista en condiciones normales.
 
 ```{r bicis_fallo_preprocesamiento_3}
 
@@ -744,7 +742,8 @@ Para ello, se han definido cinco categorías de prioridad: 'Muy alta', 'Alta', '
 -   Prioridad "Muy alta": Incluye las bicicletas que no han sido utilizadas en los últimos tres meses. La falta de uso prolongado sugiere que estos vehículos podrían presentar averías importantes o ser percibidos por los usuarios como defectuosos.
 -   Prioridad "Alta": Comprende las bicicletas pertenecientes al cluster 1, caracterizadas por una baja media de usos diarios y una baja velocidad media, lo que puede indicar posibles fallos mecánicos.
 -   Prioridad "Media": Corresponde a las bicicletas asignadas al cluster 2, que presentan una mayor media de usos diarios, aunque mantienen una velocidad media baja, lo que podría alertar sobre problemas de funcionamiento moderados.
--   Prioridad "Baja": Se ha asignado a las bicicletas del cluster 4, caracterizadas por un comportamiento estable en cuanto a su uso diario y con velocidades medias elevadas, lo que sugiere un buen estado general. Prioridad "Muy baja": Engloba las bicicletas pertenecientes al cluster 3, que destacan por recorrer mayores distancias diarias, lo que indica un alto nivel de confianza por parte de los usuarios y un estado técnico óptimo.
+-   Prioridad "Baja": Se ha asignado a las bicicletas del cluster 4, caracterizadas por un comportamiento estable en cuanto a su uso diario y con velocidades medias elevadas, lo que sugiere un buen estado general.
+-   Prioridad "Muy baja": Engloba las bicicletas pertenecientes al cluster 3, que destacan por recorrer mayores distancias diarias, lo que indica un alto nivel de confianza por parte de los usuarios y un estado técnico óptimo.
 
 ```{r bicis_fallo_prioridades}
 
