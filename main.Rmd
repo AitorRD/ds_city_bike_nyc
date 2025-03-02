@@ -29,6 +29,10 @@ if (!require("networkD3")) install.packages("networkD3")
 if (!require("sf")) install.packages("sf")
 if (!require("RColorBrewer")) install.packages("RColorBrewer")
 if (!require("scales")) install.packages("scales")
+if (!require("tidygeocoder")) install.packages("tidygeocoder")
+if (!require("leaflet.extras")) install.packages("leaflet.extras")
+if (!require("tidyr")) install.packages("tidyr")
+if (!require("leafsync")) install.packages("leafsync")
 
 library(tidyr)
 library(dplyr)
@@ -46,7 +50,10 @@ library(networkD3)
 library(sf)
 library(RColorBrewer)
 library(scales)
-
+library(tidygeocoder)
+library(leaflet.extras)
+library(tidyr)
+library(leafsync) 
 ```
 
 # New York City Bike Análisis
@@ -1800,3 +1807,295 @@ El valor p 2. 2e-16 indica que la diferencia observada en el boxplot no es aleat
 Tras ver los resultados, se puede interpretar que los usuarios ocasionales (Customer) hacen viajes más largos y variados, seguramente por motivos recreativos o turísticos. De los usuarios registrados (Subscriber) los datos indican que usan el servicio de forma más predecible y para viajes mas cortos, segurmaente para desplazamientos diarios por motivos laborales o escolares. Esta informacion nos puede servir para ayudar a la empresa a adaptar sus estrategias de distribución de bicicletas y tarifas según el comportamiento de los diferentes tipos de usuarios.
 
 ## 6.4 Manuel Sánchez Jiménez
+
+### 6.4.1 ¿Cómo afectó la pandemia del COVID-19 al uso de las bicicletas?
+
+La pandemia de COVID-19 generó cambios significativos en la movilidad urbana a nivel global. Las restricciones de movilidad, el teletrabajo y la reducción del uso del transporte público influyeron en los hábitos de desplazamiento de la población. Este análisis busca evaluar cómo la pandemia afectó el uso de bicicletas en la ciudad, comparando los patrones de viaje antes y después de marzo de 2020. Para ello, se analizarán tendencias en la cantidad de viajes o cambios en los horarios de mayor uso. Además, se contrastarán los datos reales con una predicción de cómo habría evolucionado el uso de bicicletas sin la pandemia.
+
+##### 6.4.1.1 Análisis y Desarrollo del Estudio
+
+Este código elimina los valores atípicos en la duración de los viajes (tripduration) utilizando el método del rango intercuartílico (IQR). Calcula los cuartiles Q1 y Q3, obtiene el IQR y define un límite inferior basado en este criterio. Luego, filtra los datos para mantener solo los valores dentro del rango permitido, restringiendo la duración máxima a 75 minutos. Esta duración máxima se debe a que, en general, los viajes en bicicleta suelen ser cortos y la duración estimada entre las dos estaciones más distantes entre sí según Google Maps es de aproximadamente 45 minutos, por lo que se ha decidido añadir media hora más para no perder datos sensibles.
+
+```{r MSJ_eliminacion_outliers_pandemia}
+MSJ_Q1 <- quantile(df_preprocesado$tripduration, 0.25, na.rm = TRUE)
+MSJ_Q3 <- quantile(df_preprocesado$tripduration, 0.75, na.rm = TRUE)
+MSJ_IQR <- MSJ_Q3 - MSJ_Q1
+
+MSJ_limite_inferior <- MSJ_Q1 - 1.5 * MSJ_IQR
+MSJ_limite_superior <- MSJ_Q3 + 1.5 * MSJ_IQR
+
+MSJ_df_sin_outliers <- df_preprocesado %>%
+  filter(tripduration >= MSJ_limite_inferior & tripduration <= 75)
+```
+
+Se proceden a agrupar los datos por año y calcula el promedio de viajes por año.
+
+```{r MSJ_agrupacion_anual}
+MSJ_df_sin_outliers$year <- format(MSJ_df_sin_outliers$starttime, "%Y")
+MSJ_df_avg_year <- MSJ_df_sin_outliers %>%
+  group_by(year) %>%
+  summarise(media_viajes = mean(n()))
+MSJ_df_avg_year$year <- as.numeric(MSJ_df_avg_year$year)
+```
+
+Este código genera un gráfico de línea que muestra la tendencia del número medio de viajes por año entre 2015 y 2020. Se observa una tendencia de crecimiento en el uso de bicicletas desde 2015, alcanzando su punto máximo en 2019, lo que indica un aumento progresivo en la adopción de este medio de transporte. Sin embargo, en 2020 hay una caída abrupta, lo que probablemente esté relacionado con la pandemia de COVID-19, que afectó la movilidad urbana y el comportamiento de los usuarios.
+
+```{r MSJ_generacion_grafico_tendencia_pandemia}
+MSJ_df_avg_year %>%
+  ggplot(aes(x = year, y = media_viajes)) +
+  geom_line(color = "#69b3a2", size = 1) +
+  geom_point(color = "#e9ecef", size = 2) + 
+  labs(title = "Tendencia del Número Medio de Viajes (2015-2020)",
+       x = "Año", y = "Número Medio de Viajes") +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(breaks = seq(2015, 2020, by = 1)) +
+  theme_ipsum()
+```
+
+Este código clasifica los viajes en dos períodos: **"Pre-pandemia"** (antes del 1 de marzo de 2020) y **"Pandemia"** (desde el 12 de marzo de 2020 en adelante). Luego, se filtran los datos para eliminar valores sin clasificación. Se generan dos gráficos: un **gráfico de violín**, que muestra la distribución y densidad de la duración de los viajes en cada período, y un **boxplot**, que permite comparar la mediana, los cuartiles y detectar posibles valores atípicos en la duración de los viajes antes y durante la pandemia.
+
+Por su parte, el gráfico de violín muestra la distribución de los datos, donde se observa que la duración de los viajes fue más variable durante la pandemia, con una mayor dispersión y un alargamiento de la cola superior, lo que indica la presencia de viajes de mayor duración en comparación con el periodo pre-pandemia. El boxplot sin embargo, muestra que la mediana de la duración de los viajes aumentó durante la pandemia. Además, los valores atípicos son más pronunciados en ambos periodos, pero más frecuentes en la pandemia, lo que sugiere que hubo un grupo de usuarios realizando trayectos mucho más largos en comparación con la normalidad previa.
+
+En conjunto, estos gráficos indican que durante la pandemia, las personas utilizaron las bicicletas por períodos más largos, lo que podría estar relacionado con restricciones en otros medios de transporte, un aumento del uso recreativo o cambios en los patrones de movilidad urbana.
+
+```{r MSJ_analisis_patrones_pandemia}
+MSJ_df_sin_outliers$periodo <- case_when(
+  MSJ_df_sin_outliers$starttime < "2020-03-01" ~ "Pre-pandemia",
+  MSJ_df_sin_outliers$starttime >= "2020-03-12" ~ "Pandemia"
+)
+
+MSJ_df_sin_outliers <- MSJ_df_sin_outliers %>% filter(!is.na(periodo))
+
+MSJ_p1_graph <- ggplot(MSJ_df_sin_outliers, aes(x = periodo, y = tripduration, fill = periodo)) +
+  geom_violin(alpha = 0.7, trim = FALSE)
+  theme_minimal()
+
+MSJ_p2_graph <- ggplot(MSJ_df_sin_outliers, aes(x = periodo, y = tripduration, fill = periodo)) +
+  geom_boxplot() +
+  labs(title="Comparación de duración de viajes en diferentes periodos",
+       x="Periodo", y="Duración") +
+  theme_minimal()  
+
+MSJ_p1_graph
+MSJ_p2_graph
+```
+
+Este código analiza cómo varió el uso de bicicletas a lo largo del día antes y durante la pandemia. Primero, se extrae la hora de inicio de cada viaje y se almacena en una nueva columna para facilitar el análisis temporal. Luego, los datos se agrupan por hora y periodo, permitiendo calcular el número total de viajes en cada franja horaria. Finalmente, se genera un gráfico de líneas donde el eje X representa la hora del día y el eje Y muestra la cantidad total de viajes, diferenciando los datos por colores según el periodo. Este análisis ayuda a visualizar cómo la pandemia pudo haber afectado los patrones de movilidad, identificando posibles cambios en las horas pico de uso de bicicletas.
+
+Antes de la pandemia, se observan dos picos muy marcados en las horas punta de 7:00 - 9:00 AM y 17:00 - 19:00 PM, lo que indica un uso predominante asociado a los desplazamientos laborales. Sin embargo, durante la pandemia, estos picos desaparecen y el uso de bicicletas se distribuye de manera más uniforme a lo largo del día, con un leve incremento en la tarde.
+
+Este cambio sugiere que durante la pandemia hubo una reducción de los desplazamientos típicos hacia los lugares de trabajo debido al teletrabajo o restricciones de movilidad, mientras que el uso recreativo o en horarios más flexibles se mantuvo con un patrón más estable.
+
+```{r MSJ_obtencion_uso_horas_pandemia}
+MSJ_df_sin_outliers$hour <- hour(MSJ_df_sin_outliers$starttime)
+
+MSJ_df_sin_outliers %>%
+  group_by(hour, periodo) %>%
+  summarise(total_viajes = n()) %>%
+  ggplot(aes(x = hour, y = total_viajes, color = periodo)) +
+  geom_line() +
+  labs(title="Uso de bicicletas por hora antes y durante la pandemia",
+       x="Hora del día", y="Número de viajes") +
+  theme_minimal()
+
+```
+
+A continuación se utiliza el modelo **Prophet** para analizar la evolución del uso de bicicletas por semana y estimar cómo habría sido la tendencia sin la pandemia. Primero, se agrupan los datos por semana, sumando el número total de viajes en cada período. Luego, se entrena un modelo Prophet utilizando únicamente los datos previos a marzo de 2020, permitiendo que la predicción no esté influenciada por los efectos de la pandemia. Posteriormente, se genera un conjunto de datos futuros con una proyección de dos años adicionales y se realiza la predicción. Finalmente, se comparan los valores reales con la predicción utilizando un gráfico de líneas, donde la serie azul representa los datos observados y la línea roja discontinua muestra la proyección sin pandemia. Este análisis ayuda a cuantificar el impacto de la pandemia en el uso de bicicletas y evaluar si se produjo una recuperación posterior.
+
+```{r MSJ_prediccion_semanal_pandemia}
+MSJ_df_prophet_week <- MSJ_df_sin_outliers %>%
+  group_by(ds = floor_date(as.Date(starttime), "week")) %>%  # Agrupar por semanas
+  summarise(y = sum(n()))  # Sumar el número de viajes por semana
+
+MSJ_df_train_week <- MSJ_df_prophet_week %>% filter(ds < "2020-03-01")
+MSJ_m_week <- prophet(MSJ_df_train_week, daily.seasonality = TRUE)
+
+MSJ_future_week <- make_future_dataframe(MSJ_m_week, periods = 2*365, freq = 'day')
+
+MSJ_forecast_week <- predict(MSJ_m_week, MSJ_future_week)
+
+MSJ_df_compare_week <- MSJ_df_prophet_week %>%
+  left_join(MSJ_forecast_week %>% select(ds, yhat), by = "ds") 
+
+MSJ_weekplot <- ggplot(MSJ_df_compare_week, aes(x = ds)) +
+  geom_line(aes(y = y, color="Real"), size=1) + 
+  geom_line(aes(y = yhat, color="Predicción sin pandemia"), size=1, linetype="dashed") +
+  labs(title="Comparación entre Predicción y Datos Reales (Semanas)",
+       x="Fecha", y="Número de viajes") +
+  scale_color_manual(values=c("blue", "red")) + 
+  theme_minimal()
+```
+
+Este código utiliza el modelo **Prophet** para analizar la evolución del uso de bicicletas por año y estimar cómo habría sido la tendencia sin la pandemia. Primero, se agrupan los datos por año, sumando el número total de viajes en cada período. Luego, se entrena un modelo Prophet utilizando únicamente los datos previos a marzo de 2020. Al igual que en la seccióna anterior, se genera un conjunto de datos futuros con una proyección de dos años adicionales y se realiza la predicción. Finalmente, se comparan los valores reales con la predicción utilizando un gráfico de líneas, donde la serie azul representa los datos observados y la línea roja discontinua muestra la proyección sin pandemia.
+
+```{r MSJ_prediccion_anual_pandemia}
+MSJ_df_prophet_annual <- MSJ_df_sin_outliers %>%
+  group_by(ds = floor_date(as.Date(starttime), "year")) %>%  # Agrupar por semanas
+  summarise(y = sum(n()))  # Sumar el número de viajes por semana
+
+MSJ_df_train_annual <- MSJ_df_prophet_annual %>% filter(ds < "2020-03-01")
+MSJ_m_annual <- prophet(MSJ_df_train_annual, daily.seasonality = TRUE)
+
+MSJ_future_annual <- make_future_dataframe(MSJ_m_annual, periods = 2*365, freq = 'day')
+
+MSJ_forecast_annual <- predict(MSJ_m_annual, MSJ_future_annual)
+
+MSJ_df_compare <- MSJ_df_prophet_annual %>%
+  left_join(MSJ_forecast_annual %>% select(ds, yhat), by = "ds") 
+
+MSJ_annualplot <- ggplot(MSJ_df_compare, aes(x = ds)) +
+  geom_line(aes(y = y, color="Real"), size=1) + 
+  geom_line(aes(y = yhat, color="Predicción sin pandemia"), size=1, linetype="dashed") +
+  labs(title="Comparación entre Predicción y Datos Reales (Año)",
+       x="Fecha", y="Número de viajes") +
+  scale_color_manual(values=c("blue", "red")) + 
+  theme_minimal()
+```
+
+Este conjunto de gráficos compara la evolución real del uso de bicicletas con una predicción de cómo habría sido la tendencia sin la pandemia, utilizando datos semanales y anuales.
+
+En el **primer gráfico (semanal)**, la línea roja representa el número real de viajes por semana, mientras que la línea azul discontinua muestra la predicción basada en datos previos a la pandemia. Hasta 2020, ambas líneas siguen un patrón similar, pero a partir de marzo de 2020, se observa una caída brusca en los datos reales, indicando una reducción en el uso de bicicletas. La predicción sin pandemia sugiere que, de no haber ocurrido la crisis sanitaria, la cantidad de viajes habría seguido una tendencia ascendente.
+
+El **segundo gráfico (anual)** refuerza esta conclusión desde otra perspectiva. Hasta 2019, el uso de bicicletas mostraba un crecimiento sostenido, con una fuerte caída en 2020. La predicción azul muestra que, sin la pandemia, la cantidad de viajes habría continuado en aumento. Esto indica que la pandemia no solo interrumpió la tendencia de crecimiento, sino que generó una reducción significativa en la movilidad en bicicleta.
+
+```{r MSJ_comparacion_graficos_pandemia}
+(MSJ_weekplot) / (MSJ_annualplot)
+```
+
+Este código analiza el impacto de la pandemia en el uso de bicicletas a nivel semanal, comparando los valores reales con una predicción basada en datos previos a marzo de 2020. Primero, se filtran los datos predichos para eliminar valores `NA` y se crea un gráfico de líneas donde se muestra la evolución del número de viajes por semana. En este gráfico, la línea azul representa los datos reales, mientras que la línea roja discontinua muestra la predicción de cómo habría sido el uso de bicicletas sin la pandemia.
+
+Posteriormente, se calcula la diferencia entre los valores reales y los predichos, permitiendo visualizar la cantidad de viajes que se perdieron o se ganaron con respecto a la estimación sin pandemia. Esta diferencia se representa en un segundo gráfico de columnas, donde los valores negativos indican una disminución en la cantidad de viajes con respecto a la predicción, mientras que los valores positivos sugieren posibles incrementos inesperados.
+
+El primer gráfico compara la evolución real del número de viajes en bicicleta con una predicción basada en datos previos a la pandemia. La línea roja representa los valores observados, mientras que la línea azul discontinua muestra la estimación de cómo habría evolucionado el uso de bicicletas sin la pandemia. Hasta principios de 2020, ambas líneas siguen patrones similares, pero a partir de marzo de 2020 se observa una caída drástica en los datos reales, lo que indica una fuerte disminución en la movilidad en bicicleta.
+
+El segundo gráfico cuantifica el impacto de la pandemia mostrando la diferencia entre los valores reales y los predichos. Valores negativos indican una reducción en la cantidad de viajes en comparación con lo esperado, mientras que valores positivos reflejan un posible repunte en el uso de bicicletas. Se observa que, tras la caída inicial en 2020, hubo un periodo de recuperación con valores positivos, lo que podría indicar un aumento en el uso de bicicletas en comparación con la tendencia esperada.
+
+```{r MSJ_comparativo_semana_impacto_pandemia}
+MSJ_df_compare_week <- MSJ_df_prophet_week %>%
+  left_join(MSJ_forecast_week %>% select(ds, yhat), by = "ds") %>%
+  filter(!is.na(yhat))  # Eliminar valores NA
+
+MSJ_grafico1_week <- ggplot(MSJ_df_compare_week, aes(x = ds)) +
+  geom_line(aes(y = y, color = "Real"), size = 1) + 
+  geom_line(aes(y = yhat, color = "Predicción sin pandemia"), size = 1, linetype = "dashed") +
+  labs(title = "Comparación entre Predicción y Datos Reales (Semanal)",
+       x = "Fecha", y = "Número de viajes") +
+  scale_color_manual(values = c("blue", "red")) + 
+  theme_minimal()
+
+MSJ_df_compare_week <- MSJ_df_compare_week %>%
+  mutate(diferencia = yhat - y) %>%
+  filter(!is.na(diferencia))  # Eliminar valores NA en la diferencia
+
+MSJ_grafico2_week <- ggplot(MSJ_df_compare_week, aes(x = ds, y = diferencia)) +
+  geom_col(fill = "red") +
+  labs(title = "Impacto de la Pandemia en el Uso de Bicicletas (Semanal)",
+       x = "Fecha", y = "Viajes perdidos o ganados") +
+  theme_minimal()
+
+(MSJ_grafico1_week) / (MSJ_grafico2_week)
+```
+
+```{r MSJ_comparativo_anual_impacto_pandemia}
+MSJ_df_compare_annual <- MSJ_df_prophet_annual %>%
+  left_join(MSJ_forecast_annual %>% select(ds, yhat), by = "ds") %>%
+  filter(!is.na(yhat))  # Eliminar valores NA
+
+MSJ_grafico1_annual <- ggplot(MSJ_df_compare_annual, aes(x = ds)) +
+  geom_line(aes(y = y, color = "Real"), size = 1) + 
+  geom_line(aes(y = yhat, color = "Predicción sin pandemia"), size = 1, linetype = "dashed") +
+  labs(title = "Comparación entre Predicción y Datos Reales (Semanal)",
+       x = "Fecha", y = "Número de viajes") +
+  scale_color_manual(values = c("blue", "red")) + 
+  theme_minimal()
+
+MSJ_df_compare_annual <- MSJ_df_compare_annual %>%
+  mutate(diferencia = yhat - y) %>%
+  filter(!is.na(diferencia))  # Eliminar valores NA en la diferencia
+
+MSJ_grafico2_annual <- ggplot(MSJ_df_compare_annual, aes(x = ds, y = diferencia)) +
+  geom_col(fill = "red") +
+  labs(title = "Impacto de la Pandemia en el Uso de Bicicletas (Semanal)",
+       x = "Fecha", y = "Viajes perdidos o ganados") +
+  theme_minimal()
+
+(MSJ_grafico1_annual) / (MSJ_grafico2_annual)
+```
+
+##### 6.4.1.2 Conclusiones
+
+La pandemia de COVID-19 tuvo un impacto significativo en el uso de bicicletas, interrumpiendo su crecimiento y modificando los patrones de movilidad. Antes de 2020, el número de viajes mostraba una tendencia ascendente con picos claros en horas punta, reflejando su uso como medio de transporte laboral. Sin embargo, con la llegada de la pandemia, se observó una caída drástica en la cantidad de viajes, acompañada de un cambio en los hábitos: los trayectos se distribuyeron de manera más uniforme a lo largo del día y su duración aumentó, posiblemente debido a un uso más recreativo o a la reducción del transporte público. A nivel semanal y anual, la comparación entre datos reales y predicciones muestra que, sin la pandemia, el uso de bicicletas habría seguido creciendo, mientras que en la realidad sufrió una fuerte caída en 2020. No obstante, en los años siguientes se observa una recuperación progresiva, sugiriendo que la bicicleta pudo ganar popularidad como alternativa de movilidad tras la pandemia.
+
+### 6.4.2 ¿Se pueden reconocer zonas de trabajo analizando el uso de las bicicletas?
+
+Este análisis busca determinar si es posible identificar zonas de trabajo en la ciudad a través del uso de bicicletas compartidas. Para ello, se han considerado factores como los patrones de viaje en horario laboral (7:30 - 9:30 AM para llegadas y 17:30 - 19:30 PM para salidas), la edad de los usuarios dentro del rango de actividad laboral (16 a 68 años) y la concentración de estaciones de destino. Mediante técnicas de clustering y mapas de calor, se han detectado áreas con alta afluencia de bicicletas en la mañana, lo que sugiere la presencia de centros laborales o comerciales. Estos hallazgos permiten analizar los patrones de movilidad urbana y podrían ser útiles para la planificación del transporte y la infraestructura ciclista.
+
+#### 6.4.2.1 Análisis y Desarrollo del Estudio
+
+**NOTA:** Debido a que la pandemia puede generar resultados irreales, se han tomado en cuenta los datos hasta el 31/12/2019.
+
+Este código filtra los datos para mantener únicamente los viajes realizados por usuarios registrados (Subscriber) con edades entre 16 y 68 años, excluyendo valores nulos en la edad.
+
+```{r MSJ_filtrado_edad}
+
+MSJ_df_sin_outliers <- MSJ_df_sin_outliers %>%
+  mutate(birth.year = as.numeric(birth.year)) %>%
+  drop_na(birth.year)
+
+MSJ_df_filtrado <- MSJ_df_sin_outliers %>%
+  filter((2019 - birth.year) >= 16 & (2019 - birth.year) <= 68 & usertype == "Subscriber")
+
+```
+
+Luego, se dividen los datos en dos grupos: **"Mañana"** (7:00 - 9:00 AM) y **"Tarde"** (17:00 - 19:00 PM), correspondientes a los horarios laborales típicos. Se excluyen los viajes que finalizan después de las 9:30 AM y 19:30 PM, respectivamente, para enfocarse en los desplazamientos laborales.
+
+```{r MSJ_filtrado_tiempo}
+MSJ_df_morning <- MSJ_df_filtrado %>%
+  filter(hour(stoptime) >= 7 & hour(stoptime) <= 9) %>% 
+  filter(!(hour(stoptime) == 9 & minute(stoptime) > 30))
+
+MSJ_df_evening <- MSJ_df_filtrado %>%
+  filter(hour(starttime) >= 17 & hour(starttime) <= 19) %>%
+  filter(!(hour(starttime) == 19 & minute(starttime) > 30))
+
+```
+
+Se generan mapas de calor para visualizar la concentración de llegadas y salidas de bicicletas en las zonas de trabajo durante la mañana y la tarde. Para ello, se utiliza la función `reverse_geocode` para obtener la información de ubicación a partir de las coordenadas de las estaciones de destino y origen. Los mapas de calor muestran las áreas con mayor afluencia de bicicletas en los horarios laborales, lo que sugiere la presencia de zonas de trabajo o comerciales.
+
+```{r MSJ_creacion_df_matutino}
+MSJ_df_morning <- MSJ_df_morning %>%
+  reverse_geocode(lat = end.station.latitude, long = end.station.longitude, method = "osm", full_results = TRUE)
+map_morning <- leaflet(MSJ_df_morning) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = mean(MSJ_df_morning$end.station.longitude),
+          lat = mean(MSJ_df_morning$end.station.latitude),
+          zoom = 13) %>%  
+  addHeatmap(lng = ~end.station.longitude, lat = ~end.station.latitude,
+             blur = 15, max = 0.1, radius = 20) %>%
+addLegend(position = "bottomright", colors = "blue", labels = "Destinos Matutinos")
+```
+
+```{r MSJ_creacion_df_vespertino}
+MSJ_df_evening <- MSJ_df_evening %>%
+  reverse_geocode(lat = start.station.latitude, long = start.station.longitude, method = "osm", full_results = TRUE)
+map_evening <- leaflet(MSJ_df_evening) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = mean(MSJ_df_evening$start.station.longitude), 
+          lat = mean(MSJ_df_evening$start.station.latitude),
+          zoom = 13) %>%
+  addHeatmap(lng = ~start.station.longitude, lat = ~start.station.latitude,
+             blur = 15, max = 0.1, radius = 20) %>%
+addLegend(position = "bottomright", colors = "red", labels = "Destinos Vespertinos")
+```
+
+```{r MSJ_comparativo_mapas_calor}
+sync(map_morning, map_evening)
+```
+
+##### 6.4.2.2 Conclusiones
+
+Los mapas de calor representan la concentración de destinos de bicicletas en dos momentos clave del día: la mañana (7:30 - 9:30 AM) y la tarde (5:30 - 7:30 PM). En el mapa de la izquierda, los destinos matutinos indican los puntos donde los usuarios finalizan sus viajes, lo que sugiere la presencia de zonas con alta actividad económica, como oficinas o centros educativos. En el mapa de la derecha, se representan los puntos de origen en horario vespertino, es decir, las estaciones donde los usuarios inician sus viajes al final de la jornada.
+
+Si las áreas de mayor concentración en ambos mapas son similares, esto sugiere que muchas personas comienzan y terminan sus viajes en las mismas ubicaciones, lo que refuerza la idea de que estas zonas pueden ser distritos empresariales o comerciales con una gran afluencia de trabajadores que utilizan la bicicleta como medio de transporte diario. En ciudades como Nueva York o Nueva Jersey, esto es común en áreas con alta densidad de oficinas, donde las personas llegan en bicicleta por la mañana y la utilizan nuevamente para regresar a casa por la tarde.
+
+Por otro lado, en Nueva York la distribución de los viajes matutinos y vespertinos en bicicleta puede estar influenciada por varios factores. Los viajes matutinos suelen estar más concentrados porque muchas personas utilizan la bicicleta para desplazarse a sus lugares de trabajo o estudio en horarios regulares, lo que genera una alta afluencia de viajes hacia zonas empresariales y comerciales. Sin embargo, en el horario vespertino, la distribución de los viajes tiende a ser más dispersa, ya que los usuarios pueden optar por distintos medios de transporte para regresar a casa, como metro, autobús o incluso compartir vehículos. Además, las condiciones climáticas, la seguridad vial en horarios nocturnos y la disponibilidad de alternativas de movilidad pueden contribuir a que los viajes en bicicleta sean menos frecuentes en la tarde en comparación con la mañana.
