@@ -33,6 +33,7 @@ if (!require("tidygeocoder")) install.packages("tidygeocoder")
 if (!require("leaflet.extras")) install.packages("leaflet.extras")
 if (!require("tidyr")) install.packages("tidyr")
 if (!require("leafsync")) install.packages("leafsync")
+if (!require("prophet")) install.packages("prophet")
 
 library(tidyr)
 library(dplyr)
@@ -53,7 +54,8 @@ library(scales)
 library(tidygeocoder)
 library(leaflet.extras)
 library(tidyr)
-library(leafsync) 
+library(leafsync)
+library(prophet)
 ```
 
 # New York City Bike Análisis
@@ -1849,7 +1851,7 @@ MSJ_df_avg_year %>%
        x = "Año", y = "Número Medio de Viajes") +
   scale_y_continuous(labels = scales::comma) +
   scale_x_continuous(breaks = seq(2015, 2020, by = 1)) +
-  theme_ipsum()
+  theme_minimal()
 ```
 
 Este código clasifica los viajes en dos períodos: **"Pre-pandemia"** (antes del 1 de marzo de 2020) y **"Pandemia"** (desde el 12 de marzo de 2020 en adelante). Luego, se filtran los datos para eliminar valores sin clasificación. Se generan dos gráficos: un **gráfico de violín**, que muestra la distribución y densidad de la duración de los viajes en cada período, y un **boxplot**, que permite comparar la mediana, los cuartiles y detectar posibles valores atípicos en la duración de los viajes antes y durante la pandemia.
