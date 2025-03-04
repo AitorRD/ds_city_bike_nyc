@@ -58,8 +58,6 @@ library(leafsync)
 library(prophet)
 ```
 
-# New York City Bike Análisis
-
 ## 1. Introducción
 
 Este proyecto ha sido realizado por el Equipo 2. La comunicación entre los miembros del grupo se ha llevado a cabo a través de reuniones y mensajes en Discord. La gestión del proyecto se ha realizado mediante un repositorio en GitHub. Se eligió R como lenguaje de programación, ya que consideramos que se alineaba mejor con la asignatura, dado que todos los conocimientos técnicos impartidos han sido en este lenguaje.
