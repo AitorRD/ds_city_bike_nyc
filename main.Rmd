@@ -3,7 +3,7 @@ title: "Preguntas Individuales Equipo 2 de Aitor"
 author:
   - "Rodríguez Dueñas, Aitor"
 date: "Febrero de 2025"
-output: html_document
+output: html_notebook
 runtime: shiny
 ---
 
@@ -18,6 +18,7 @@ if (!require("lubridate")) install.packages("lubridate")
 if (!require("leaflet")) install.packages("leaflet")
 if (!require("leaflet.extras")) install.packages("leaflet.extras")
 if (!require("shiny")) install.packages("shiny")
+if (!require("networkD3")) install.packages("networkD3")
 
 library(dplyr)
 library(readr)
@@ -27,7 +28,7 @@ library(lubridate)
 library(leaflet)
 library(leaflet.extras)
 library(shiny)
-
+library(networkD3)
 ```
 
 # Preprocesamiento
@@ -213,12 +214,8 @@ ui <- fluidPage(
       selectInput("dia", "Seleccionar Día:", 
                   choices = c("Todos", 1:31), selected = "Todos"),
       selectInput("hora", "Seleccionar Hora:", 
-                  choices = c(0:23), selected = "8")
-    ),
-      mainPanel(
-      leafletOutput("mapa_rutas", height = "600px"),
-
-      tags$div(
+                  choices = c(0:23), selected = "8"),
+            tags$div(
         style = "margin-top: 20px; padding: 10px; background: white; border-radius: 5px; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); max-width: 300px;",
         tags$h4("Leyenda", style = "margin-top: 0; margin-bottom: 10px;"),
         
@@ -239,7 +236,12 @@ ui <- fluidPage(
           tags$span(style = "display: inline-block; width: 40px; height: 5px; background: red; margin-right: 10px;"),
           "Rutas"
         )
-      )
+      ),
+      tags$div(style = "margin-top: 20px; padding: 10px; background: white; border-radius: 5px; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); max-width: 300px;",
+        tags$h4("Aviso con poner 'Todos' en los inputs (puede dejar de verse el mapa por falta de potencia)", style = "margin-top: 0; margin-bottom: 10px;"))
+    ),
+      mainPanel(
+      leafletOutput("mapa_rutas", height = "600px")
     )
   )
 )
